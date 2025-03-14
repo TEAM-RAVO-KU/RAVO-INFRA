@@ -1,0 +1,12 @@
+<network>
+  <name>k3snat</name>
+  <forward mode="nat"/>
+  <bridge name="virbr10" stp="off" delay="0"/>
+  <ip address="45.120.120.1" netmask="255.255.255.0">
+    <dhcp>
+        <range start="45.120.120.100" end="45.120.120.200"/>
+        <!-- Static IP할당 -->
+        <host mac="52:54:00:02:d0:93" name="k3s" ip="45.120.120.101"/>
+    </dhcp>
+  </ip>
+</network>
