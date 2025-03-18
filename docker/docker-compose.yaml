@@ -1,0 +1,38 @@
+version: '3.8'
+
+services:
+  mysql-live:
+    image: mysql:latest
+    container_name: mysql-live
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: live_db
+      MYSQL_USER: live_user
+      MYSQL_PASSWORD: live_pass
+    ports:
+      - "3306:3306"
+    volumes:
+      - ./mysql-live-data:/var/lib/mysql
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    restart: always
+
+  mysql-standby:
+    image: mysql:latest
+    container_name: mysql-standby
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: standby_db
+      MYSQL_USER: standby_user
+      MYSQL_PASSWORD: standby_pass
+    ports:
+      - "3307:3306"
+    volumes:
+      - ./mysql-standby-data:/var/lib/mysql
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    restart: always
