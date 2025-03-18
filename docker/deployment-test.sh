@@ -1,3 +1,11 @@
+### Firewalld configuration
+sudo firewall-cmd --permanent --zone=public --add-port=3306/tcp
+sudo firewall-cmd --permanent --zone=public --add-port=3307/tcp
+sudo firewall-cmd --reload
+
+firewall-cmd --list-ports
+# 3306/tcp 3307/tcp
+
 ### Deploy container in background mode
 docker-compose up -d
 
