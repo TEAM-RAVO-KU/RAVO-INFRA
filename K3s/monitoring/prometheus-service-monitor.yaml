@@ -1,0 +1,39 @@
+### ServiceMonitor
+
+# Helm prometheus-community/kube-prometheus-stack를 사용하면
+# 직접 prometheus.yml을 수정하지 않고, ServiceMonitor(또는 PodMonitor) 리소스를 통해
+# Prometheus에 Scrape 대상(Job)을 등록하는 방식이 권장됨
+
+# namespace: monitoring에서 생성해야
+# Prometheus Operator(Helm release prometheus-stack)가 인식
+
+# selector.matchLabels.app: thejasbabu-spring-actuator와
+# namespaceSelector.matchNames: [default] 설정으로, 위 Service와 매칭되도록 함
+
+# /actuator/prometheus 경로를 30초 간격으로 Scraping하여 JVM 메트릭을 수집
+
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: thejasbabu-spring-actuator-sm
+  namespace: monitoring
+  labels:
+    # kube-prometheus-stack의 helm release 이름과 동일해야 함
+    release: prometheus-stack
+spec:
+  # 어떤 Service를 모니터링할지 label 선택
+  selector:
+    matchLabels:
+      app: thejasbabu-spring-actuator
+
+  # Spring Deployment의 Service가 존재하는 Namespace 지정
+  namespaceSelector:
+    matchNames:
+      - default
+
+  # 실제 Scraping 설정
+  # SVC 포트 4001 -> 30001 으로 포트포워딩
+  endpoints:
+    - port: port4001
+      path: /actuator/prometheus
+      interval: 30s
