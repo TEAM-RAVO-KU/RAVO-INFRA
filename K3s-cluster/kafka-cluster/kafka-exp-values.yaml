@@ -1,0 +1,18 @@
+replicaCount: 1
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 100m
+    memory: 128Mi
+# Kafka 접속 정보
+kafka:
+  serverHost: kafka-broker
+  serverPort: 9092 # 클러스터 내부 포트
+# Prometheus Scrape
+serviceMonitor:
+  enabled: true
+  namespace: monitoring  # Prometheus 설치 네임스페이스
+  labels:
+    release: prometheus-stack

@@ -1,0 +1,82 @@
+kraft:
+  # bitnami 최신 Kafka 차트와 Kafka 최신 버전 (3.x 이상)에서는 KRaft 모드 사용 권장 
+
+  # KRaft 모드는 ZooKeeper 없이 내장된 Raft 합의 기반 Quorum Controller로 메타데이터 관리를
+  # Kafka 자체에 통합하여 아키텍처를 단순화하고 배포·관리 효율을 높인다
+  # 별도의 ZooKeeper 클러스터 없이 Kafka 브로커들이 스스로 메타데이터(토픽·파티션 정보, 리더 선출 등)를 관리
+
+  # KRaft 모드는 기존 ZooKeeper 클러스터와의 직접 마이그레이션이 불가능하고
+  # 컨트롤러 롤링 업데이트, 버전 업/다운그레이드를 지원하지 않으며
+  # 일부 인증, 스토리지 기능도 미지원되어 운영 유연성과 안정성이 제한
+  enabled: true
+
+controller:
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: 100m
+      memory: 512Mi
+    limits:
+      cpu: 200m
+      memory: 768Mi
+  # JVM Heap 옵션을 리소스 제한 보다 낮게 설정
+  heapOpts: "-Xmx512m -Xms512m"
+  # Kafka 컨트롤러(Quorum Controller)처럼 초기 구동에 시간이 오래 걸리는 애플리케이션이
+  # 완전히 시작될 때까지 Kubernetes의 liveness나 readiness 프로브에 의해 잘못 재시작되거나 서비스 트래픽에서 제외되는 것을 방지
+
+  # 저사양 디스크 + 512 Mi heap이면 Controller 세팅에 1~3분, 간혹 5분 이상 소요
+  # 따라서 Startup Probe를 최대 20분으로 설정
+  startupProbe:
+    enabled: true
+    failureThreshold: 120   # 120×10s = 20 min
+    periodSeconds: 10
+  readinessProbe:
+    periodSeconds: 15
+
+broker:
+  # 브로커 1 개
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: 250m
+      memory: 768Mi
+    limits:
+      cpu: 500m
+      memory: 800Mi
+  # JVM Heap 옵션을 리소스 제한 보다 낮게 설정
+  heapOpts: "-Xmx768m -Xms768m"
+  startupProbe:
+    enabled: true
+    failureThreshold: 120
+    periodSeconds: 10
+    tcpSocket:
+      port: client # 9092
+  readinessProbe:
+    periodSeconds: 15
+
+zookeeper:
+  # KRaft 모드에선 Zookeeper 비활성화
+  enabled: false
+
+# NodePort로 외부 노출
+externalAccess:
+  enabled: true
+  autoDiscovery:
+    # 브로커가 자신의 외부 IP 자동 광고
+    enabled: true
+  controller:
+    service:
+      type: NodePort
+      # 컨트롤러 노드 1개
+      nodePorts: [31092]
+      useHostIPs: true
+  broker:
+    service:
+      type: NodePort
+      #  브로커 1개
+      nodePorts: [30092]
+      useHostIPs: true
+
+# 호스트 경로 방식의 간편한 저장소
+persistence:
+  size: 5Gi
