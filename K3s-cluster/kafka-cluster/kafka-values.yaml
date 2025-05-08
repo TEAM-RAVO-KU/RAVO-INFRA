@@ -1,81 +1,142 @@
+# bitnami 최신 Kafka 차트와 Kafka 최신 버전 (3.x 이상)에서는 KRaft 모드 사용 권장 
+
+# KRaft 모드는 ZooKeeper 없이 내장된 Raft 합의 기반 Quorum Controller로 메타데이터 관리를
+# Kafka 자체에 통합하여 아키텍처를 단순화하고 배포·관리 효율을 높인다
+# 별도의 ZooKeeper 클러스터 없이 Kafka 브로커들이 스스로 메타데이터(토픽·파티션 정보, 리더 선출 등)를 관리
+
+# KRaft 모드는 기존 ZooKeeper 클러스터와의 직접 마이그레이션이 불가능하고
+# 컨트롤러 롤링 업데이트, 버전 업/다운그레이드를 지원하지 않으며
+# 일부 인증, 스토리지 기능도 미지원되어 운영 유연성과 안정성이 제한
 kraft:
-  # bitnami 최신 Kafka 차트와 Kafka 최신 버전 (3.x 이상)에서는 KRaft 모드 사용 권장 
+  enabled: false
 
-  # KRaft 모드는 ZooKeeper 없이 내장된 Raft 합의 기반 Quorum Controller로 메타데이터 관리를
-  # Kafka 자체에 통합하여 아키텍처를 단순화하고 배포·관리 효율을 높인다
-  # 별도의 ZooKeeper 클러스터 없이 Kafka 브로커들이 스스로 메타데이터(토픽·파티션 정보, 리더 선출 등)를 관리
+# autoDiscovery Init-Container 를 쓰려면 RBAC 와 ServiceAccount 토큰 권한이 필요
+# RBAC 리소스 생성
+rbac:
+  create: true
 
-  # KRaft 모드는 기존 ZooKeeper 클러스터와의 직접 마이그레이션이 불가능하고
-  # 컨트롤러 롤링 업데이트, 버전 업/다운그레이드를 지원하지 않으며
-  # 일부 인증, 스토리지 기능도 미지원되어 운영 유연성과 안정성이 제한
+# broker 정의 상단에서 진행해야 자동 주입 방지 가능
+# 인증 방식을 기본 SASL → plaintext로 변경
+auth:
+  clientProtocol: plaintext
+  interBrokerProtocol: plaintext
+  sasl:
+    # 빈 배열로 두면 SASL 완전 비활성화
+    enabledMechanisms: []
+  tls:
+    type: "" 
+
+# 브로커는 토픽 생성 요청을 받은 뒤, 내부 ZK_BROKER(SASL)나 CLIENT 리스너로 컨트롤러에게 파티션 할당을 요청해야 함
+# 그 리스너들(SASL 9095, CLIENT 9092)은 외부에 노출되지 않아(=포워딩/NGINX 처리되지 않아) 연결이 끊기고, 결국 할당 대기 타임아웃 발생
+# Broker Pod 의 환경변수로 Kafka 설정 옵션을 넘기는 방식
+
+# 28.x 이후 Bitnami Kafka 차트는 extraEnvVars: 블록을 브로커별(server‑0,1,2) ConfigMap 이 아닌 제너릭 값으로 취급
+# 그러나 템플릿 내부에서 listeners.* 기본값을 나중에 다시 써 넣기 때문에 우리가 넣은 덮어쓰기 줄이 앞쪽에 들어가고, 뒤에 오는 디폴트가 다시 9094·9095 리스너를 살려 버림림
+# 중복을 전부 덮어쓰려면 extraConfig 를 써야 함함
+
+# EXTERNAL 리스너가 없어도 외부 접속은 충분히 가능
+# 리스너 이름의 경우 브로커 내부에서 구분용으로 붙인 라벨일 뿐 외부‑내부를 가르는 기능이 존재X
+# Bitnami 차트 기본 SASL 리스너를 완전히 덮어쓰는 환경변수
+extraConfig: |-
+  listeners=PLAINTEXT://0.0.0.0:9092
+  advertised.listeners=PLAINTEXT://45.120.120.113:30092
+  listener.security.protocol.map=PLAINTEXT:PLAINTEXT
+  inter.broker.listener.name=PLAINTEXT
+
+# 하지만 broker의 리소스를 아껴 전체 클러스터의 리소스 제한에 맞추기 위해
+# zookeeper 모드를 통해 Kafka 클러스터 배포
+# KRaft 모드에선 Zookeeper 비활성화
+zookeeper:
   enabled: true
-
-controller:
   replicaCount: 1
   resources:
     requests:
       cpu: 100m
-      memory: 512Mi
+      memory: 256Mi
     limits:
-      cpu: 200m
-      memory: 768Mi
-  # JVM Heap 옵션을 리소스 제한 보다 낮게 설정
-  heapOpts: "-Xmx512m -Xms512m"
-  # Kafka 컨트롤러(Quorum Controller)처럼 초기 구동에 시간이 오래 걸리는 애플리케이션이
-  # 완전히 시작될 때까지 Kubernetes의 liveness나 readiness 프로브에 의해 잘못 재시작되거나 서비스 트래픽에서 제외되는 것을 방지
+      cpu: 250m
+      memory: 512Mi
 
-  # 저사양 디스크 + 512 Mi heap이면 Controller 세팅에 1~3분, 간혹 5분 이상 소요
-  # 따라서 Startup Probe를 최대 20분으로 설정
-  startupProbe:
-    enabled: true
-    failureThreshold: 120   # 120×10s = 20 min
-    periodSeconds: 10
-  readinessProbe:
-    periodSeconds: 15
+# controller:
+#   replicaCount: 0
+#   resources:
+#     requests:
+#       cpu: 100m
+#       memory: 512Mi
+#     limits:
+#       cpu: 200m
+#       memory: 768Mi
+#   # JVM Heap 옵션을 리소스 제한 보다 낮게 설정
+#   heapOpts: "-Xmx512m -Xms512m"
+#   # Kafka 컨트롤러(Quorum Controller)처럼 초기 구동에 시간이 오래 걸리는 애플리케이션이
+#   # 완전히 시작될 때까지 Kubernetes의 liveness나 readiness 프로브에 의해 잘못 재시작되거나 서비스 트래픽에서 제외되는 것을 방지
+
+#   # 저사양 디스크 + 512 Mi heap이면 Controller 세팅에 1~3분, 간혹 5분 이상 소요
+#   # 따라서 Startup Probe를 최대 20분으로 설정
+#   startupProbe:
+#     enabled: true
+#     failureThreshold: 120   # 120×10s = 20 min
+#     periodSeconds: 10
+#   readinessProbe:
+#     periodSeconds: 15
+
+# initContainer 권한을 위해 단순 명시 필요
+controller:
+  replicaCount: 0
+  automountServiceAccountToken: true
 
 broker:
+  # Pod 에 토큰 마운트
+  automountServiceAccountToken: true
+  # Bitnami Kafka 차트, KRaft 모드에서 브로커가 실제로는 9092 만 LISTEN 하는데
+  # startupProbe·readinessProbe 기본값의 문제로 Startup Probe 설정 적용이 불가
+  # 아무런 로그 없이 broker-0 Pod가 정지되고 재시작
+  # Bitnami Kafka 템플릿이 실제로 참조하는 필드는 두 곳이기에 두 곳 모두 변경
+  # Pod 내부 EXPOSE 포트
+  containerPorts:
+    client: 9092
+  # 서비스/광고/외부 접근용
+  ports:
+    client: 9092
   # 브로커 1 개
   replicaCount: 1
   resources:
     requests:
-      cpu: 250m
-      memory: 768Mi
+      cpu: 300m
+      memory: 1024Mi
     limits:
-      cpu: 500m
-      memory: 800Mi
+      cpu: 600m
+      memory: 1536Mi
   # JVM Heap 옵션을 리소스 제한 보다 낮게 설정
-  heapOpts: "-Xmx768m -Xms768m"
+  heapOpts: "-Xmx1280m -Xms1280m"
   startupProbe:
     enabled: true
     failureThreshold: 120
     periodSeconds: 10
+    # probe 에서 broker ContainerPort 번호를 직접 지정
     tcpSocket:
-      port: client # 9092
+      port: client
   readinessProbe:
     periodSeconds: 15
+    tcpSocket:
+      port: client
+# 기본값인 false 상태면 컨트롤러 설정 요구
+defaultInitContainers:
+  autoDiscovery:
+    enabled: true
 
-zookeeper:
-  # KRaft 모드에선 Zookeeper 비활성화
+# EXTERNAL 리스너·서비스 자동 생성 끄기
+externalAccess:
   enabled: false
 
-# NodePort로 외부 노출
-externalAccess:
-  enabled: true
-  autoDiscovery:
-    # 브로커가 자신의 외부 IP 자동 광고
-    enabled: true
-  controller:
-    service:
-      type: NodePort
-      # 컨트롤러 노드 1개
-      nodePorts: [31092]
-      useHostIPs: true
-  broker:
-    service:
-      type: NodePort
-      #  브로커 1개
-      nodePorts: [30092]
-      useHostIPs: true
+# Chart의 기본 Service 를 NodePort 로 노출
+# 추후 다중 브로커 생성 시, 각 브로커마다 수동으로 Service 생성 필요
+service:
+  type: NodePort
+  port: 9092
+  nodePorts:
+    client: 30092
+  useHostIPs: true
 
 # 호스트 경로 방식의 간편한 저장소
 persistence:

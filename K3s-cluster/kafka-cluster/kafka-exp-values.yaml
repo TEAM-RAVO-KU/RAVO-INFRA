@@ -6,13 +6,17 @@ resources:
   limits:
     cpu: 100m
     memory: 128Mi
-# Kafka 접속 정보
-kafka:
-  serverHost: kafka-broker
-  serverPort: 9092 # 클러스터 내부 포트
+
+# Kafka 접속 정보
+kafkaServer:
+  - kafka.kafka.svc.cluster.local:9092
+
+rbac:
+  create: true
+
 # Prometheus Scrape
 serviceMonitor:
   enabled: true
-  namespace: monitoring  # Prometheus 설치 네임스페이스
+  namespace: monitoring
   labels:
     release: prometheus-stack
