@@ -47,21 +47,26 @@ auth:
 # 3. 이후 프로듀서/컨슈머는 이 새 연결을 통해 입출력을 수행
 # advertised.listeners에 외부에서 접근할 수 없는 내부 IP(또는 NAT IP)를 두면
 # 1단계(bootstrap)는 통과해도 2단계(메타데이터 재접속)에서 클라이언트가 잘못된 주소로 접속을 시도해 타임아웃
-# 따라서 advertised.listeners를 접근 가능한 Host IP로 변경해야만 접근 가능
 extraConfig: |-
-  listeners=INTERNAL://0.0.0.0:9092,EXTERNAL://0.0.0.0:9094
-  listener.security.protocol.map=INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
-  advertised.listeners=INTERNAL://kafka-broker-0.kafka-bk logroker-headless.kafka.svc.cluster.local:9092,EXTERNAL://<K3s 호스트 Public IP>:30092
-  inter.broker.listener.name=INTERNAL
+  listener.security.protocol.map=CLIENT:PLAINTEXT,INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
 
-# externalAccess 는 Helm이 자동으로 Service 만들지 않도록 끄기
 externalAccess:
-  enabled: false
-
-# 기존 service 블록은 INTERNAL 용으로만 남기거나 ClusterIP 쓰기
-service:
-  type: ClusterIP
-  port: 9092
+  enabled: true
+  autoDiscovery:
+    # 브로커가 자신의 외부 IP 자동 광고
+    enabled: true
+  controller:
+    service:
+      type: NodePort
+      # 컨트롤러 노드 0개
+      nodePorts: []
+      useHostIPs: true
+  broker:
+    service:
+      type: NodePort
+      #  브로커 1개
+      nodePorts: [30092]
+      useHostIPs: true
 
 # 하지만 broker의 리소스를 아껴 전체 클러스터의 리소스 제한에 맞추기 위해
 # zookeeper 모드를 통해 Kafka 클러스터 배포
@@ -77,34 +82,6 @@ zookeeper:
       cpu: 250m
       memory: 512Mi
 
-# controller:
-#   replicaCount: 0
-#   resources:
-#     requests:
-#       cpu: 100m
-#       memory: 512Mi
-#     limits:
-#       cpu: 200m
-#       memory: 768Mi
-#   # JVM Heap 옵션을 리소스 제한 보다 낮게 설정
-#   heapOpts: "-Xmx512m -Xms512m"
-#   # Kafka 컨트롤러(Quorum Controller)처럼 초기 구동에 시간이 오래 걸리는 애플리케이션이
-#   # 완전히 시작될 때까지 Kubernetes의 liveness나 readiness 프로브에 의해 잘못 재시작되거나 서비스 트래픽에서 제외되는 것을 방지
-
-#   # 저사양 디스크 + 512 Mi heap이면 Controller 세팅에 1~3분, 간혹 5분 이상 소요
-#   # 따라서 Startup Probe를 최대 20분으로 설정
-#   startupProbe:
-#     enabled: true
-#     failureThreshold: 120   # 120×10s = 20 min
-#     periodSeconds: 10
-#   readinessProbe:
-#     periodSeconds: 15
-
-# initContainer 권한을 위해 단순 명시 필요
-controller:
-  replicaCount: 0
-  automountServiceAccountToken: true
-
 broker:
   # Pod 에 토큰 마운트
   automountServiceAccountToken: true
@@ -112,12 +89,15 @@ broker:
   # startupProbe·readinessProbe 기본값의 문제로 Startup Probe 설정 적용이 불가
   # 아무런 로그 없이 broker-0 Pod가 정지되고 재시작
   # Bitnami Kafka 템플릿이 실제로 참조하는 필드는 두 곳이기에 두 곳 모두 변경
-  # Pod 내부 EXPOSE 포트
+  # Pod 내부/외부 리스너 포트 모두 정의
   containerPorts:
-    client: 9092
+    client:   9092
+    external: 9094
   # 서비스/광고/외부 접근용
+  # Pod 내부/외부 리스너 포트 모두 정의
   ports:
-    client: 9092
+    client:   9092
+    external: 9094
   # 브로커 1 개
   replicaCount: 1
   resources:
@@ -148,3 +128,31 @@ defaultInitContainers:
 # 호스트 경로 방식의 간편한 저장소
 persistence:
   size: 5Gi
+
+# initContainer 권한을 위해 단순 명시 필요
+controller:
+  replicaCount: 0
+  automountServiceAccountToken: true
+
+# controller:
+#   replicaCount: 0
+#   resources:
+#     requests:
+#       cpu: 100m
+#       memory: 512Mi
+#     limits:
+#       cpu: 200m
+#       memory: 768Mi
+#   # JVM Heap 옵션을 리소스 제한 보다 낮게 설정
+#   heapOpts: "-Xmx512m -Xms512m"
+#   # Kafka 컨트롤러(Quorum Controller)처럼 초기 구동에 시간이 오래 걸리는 애플리케이션이
+#   # 완전히 시작될 때까지 Kubernetes의 liveness나 readiness 프로브에 의해 잘못 재시작되거나 서비스 트래픽에서 제외되는 것을 방지
+
+#   # 저사양 디스크 + 512 Mi heap이면 Controller 세팅에 1~3분, 간혹 5분 이상 소요
+#   # 따라서 Startup Probe를 최대 20분으로 설정
+#   startupProbe:
+#     enabled: true
+#     failureThreshold: 120   # 120×10s = 20 min
+#     periodSeconds: 10
+#   readinessProbe:
+#     periodSeconds: 15

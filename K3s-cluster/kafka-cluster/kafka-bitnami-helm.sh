@@ -105,6 +105,7 @@ k logs -f -n kafka kafka-broker-0
 
 
 ### [Broker SASL HandShake 트러블슈팅]
+# kafka-broker 환경변수
 kubectl -n kafka exec kafka-broker-0 -- \
   grep -E '^(listeners|advertised\.listeners|listener\.security\.protocol\.map)' \
   /opt/bitnami/kafka/config/server.properties
