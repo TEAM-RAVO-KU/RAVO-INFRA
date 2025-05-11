@@ -15,6 +15,7 @@ kraft:
 rbac:
   create: true
 
+### [TroubleShooting: SASL Error]
 # broker 정의 상단에서 진행해야 자동 주입 방지 가능
 # 인증 방식을 기본 SASL → plaintext로 변경
 auth:
@@ -26,6 +27,7 @@ auth:
   tls:
     type: "" 
 
+### [TroubleShooting: SASL Error]
 # 브로커는 토픽 생성 요청을 받은 뒤, 내부 ZK_BROKER(SASL)나 CLIENT 리스너로 컨트롤러에게 파티션 할당을 요청해야 함
 # 그 리스너들(SASL 9095, CLIENT 9092)은 외부에 노출되지 않아(=포워딩/NGINX 처리되지 않아) 연결이 끊기고, 결국 할당 대기 타임아웃 발생
 # Broker Pod 의 환경변수로 Kafka 설정 옵션을 넘기는 방식
@@ -37,11 +39,26 @@ auth:
 # EXTERNAL 리스너가 없어도 외부 접속은 충분히 가능
 # 리스너 이름의 경우 브로커 내부에서 구분용으로 붙인 라벨일 뿐 외부‑내부를 가르는 기능이 존재X
 # Bitnami 차트 기본 SASL 리스너를 완전히 덮어쓰는 환경변수
+
+### [Trouble Shooting: Timed out waiting for a node assignment]
+# Kafka는 메타데이터 기반 다단계 연결
+# 1. 클라이언트가 --bootstrap-server 로 지정한 호스트:포트에 접속 → 브로커로부터 토픽·파티션·리더 정보 등 메타데이터 수신
+# 2. 메타데이터에 담긴 advertised.listeners(호스트:포트) 정보를 이용해, 실제 데이터를 주고받을 브로커에 새로운 TCP 연결을 시도
+# 3. 이후 프로듀서/컨슈머는 이 새 연결을 통해 입출력을 수행
+# advertised.listeners에 외부에서 접근할 수 없는 내부 IP(또는 NAT IP)를 두면
+# 1단계(bootstrap)는 통과해도 2단계(메타데이터 재접속)에서 클라이언트가 잘못된 주소로 접속을 시도해 타임아웃
+# 따라서 advertised.listeners를 접근 가능한 Host IP로 변경해야만 접근 가능
 extraConfig: |-
-  listeners=PLAINTEXT://0.0.0.0:9092
-  advertised.listeners=PLAINTEXT://45.120.120.113:30092
-  listener.security.protocol.map=PLAINTEXT:PLAINTEXT
-  inter.broker.listener.name=PLAINTEXT
+  # INTERNAL(브로커 간/컨트롤러 통신) / EXTERNAL(외부 클라이언트) 리스너 선언
+  listeners=INTERNAL://0.0.0.0:9092,EXTERNAL://0.0.0.0:9094
+  # 리스너 이름 <> 프로토콜 매핑
+  listener.security.protocol.map=INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
+  # 메타데이터로 흘려줄 내·외부 광고 주소
+  #     INTERNAL: k3s Headless Service (브로커 간 통신)
+  #     EXTERNAL: k3s-host의 공인 IP , nginx 프록시 포트
+  advertised.listeners=INTERNAL://kafka-broker-0.kafka-broker-headless.kafka.svc.cluster.local:9092,EXTERNAL://<k3s-host의 공인 IP>:30092
+  # 브로커들(컨트롤러 포함)끼리는 INTERNAL 리스너로만 통신
+  inter.broker.listener.name=INTERNAL
 
 # 하지만 broker의 리소스를 아껴 전체 클러스터의 리소스 제한에 맞추기 위해
 # zookeeper 모드를 통해 Kafka 클러스터 배포
@@ -129,14 +146,10 @@ defaultInitContainers:
 externalAccess:
   enabled: false
 
-# Chart의 기본 Service 를 NodePort 로 노출
-# 추후 다중 브로커 생성 시, 각 브로커마다 수동으로 Service 생성 필요
+# ClusterIP 내부용 서비스만 남긴 상태로 설정
 service:
-  type: NodePort
+  type: ClusterIP    
   port: 9092
-  nodePorts:
-    client: 30092
-  useHostIPs: true
 
 # 호스트 경로 방식의 간편한 저장소
 persistence:

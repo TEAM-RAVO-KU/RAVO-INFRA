@@ -143,7 +143,7 @@ helm upgrade --install kafka-exp prometheus-community/prometheus-kafka-exporter 
 # kafka-exp Manifest 값을 가져와 검증
 helm -n kafka get manifest kafka-exp | grep -- --kafka.server
 
-# 버전 적용이 되지 않느 문제를 해결하기 위해 helm 릴리즈 조정
+# 버전 적용이 되지 않는 문제를 해결하기 위해 helm 릴리즈 조정
 helm -n kafka uninstall kafka-exp
 
 # 로컬 차트 캐시 업데이트

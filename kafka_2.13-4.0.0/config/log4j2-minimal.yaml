@@ -1,0 +1,17 @@
+Configuration:
+  status: error
+  strict: true
+  monitorInterval: 0
+
+  appenders:
+    Console:
+      name: STDOUT
+      target: SYSTEM_OUT
+      PatternLayout:
+        pattern: "%d{HH:mm:ss.SSS} [%t] %-5level %logger{36} - %msg%n"
+
+  loggers:
+    root:
+      level: info
+      AppenderRef:
+        - ref: STDOUT

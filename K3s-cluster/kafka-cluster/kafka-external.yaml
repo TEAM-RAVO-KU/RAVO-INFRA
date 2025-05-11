@@ -1,0 +1,17 @@
+# Helm 템플릿 변경 없이 바로 노출
+# Helm externalAccess 설정시 broker Err 발생
+apiVersion: v1
+kind: Service
+metadata:
+  name: kafka-external
+  namespace: kafka
+spec:
+  type: NodePort
+  selector:
+    app.kubernetes.io/name: kafka
+    app.kubernetes.io/component: broker
+  ports:
+    - name: external
+      port: 9094         # 브로커 EXTERNAL 리스너 포트
+      targetPort: 9094
+      nodePort: 30092    # 호스트에서 열릴 포트
