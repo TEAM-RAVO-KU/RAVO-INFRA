@@ -25,7 +25,7 @@ auth:
     # 빈 배열로 두면 SASL 완전 비활성화
     enabledMechanisms: []
   tls:
-    type: "" 
+    type: ""
 
 ### [TroubleShooting: SASL Error]
 # 브로커는 토픽 생성 요청을 받은 뒤, 내부 ZK_BROKER(SASL)나 CLIENT 리스너로 컨트롤러에게 파티션 할당을 요청해야 함
@@ -49,16 +49,19 @@ auth:
 # 1단계(bootstrap)는 통과해도 2단계(메타데이터 재접속)에서 클라이언트가 잘못된 주소로 접속을 시도해 타임아웃
 # 따라서 advertised.listeners를 접근 가능한 Host IP로 변경해야만 접근 가능
 extraConfig: |-
-  # INTERNAL(브로커 간/컨트롤러 통신) / EXTERNAL(외부 클라이언트) 리스너 선언
   listeners=INTERNAL://0.0.0.0:9092,EXTERNAL://0.0.0.0:9094
-  # 리스너 이름 <> 프로토콜 매핑
   listener.security.protocol.map=INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
-  # 메타데이터로 흘려줄 내·외부 광고 주소
-  #     INTERNAL: k3s Headless Service (브로커 간 통신)
-  #     EXTERNAL: k3s-host의 공인 IP , nginx 프록시 포트
-  advertised.listeners=INTERNAL://kafka-broker-0.kafka-broker-headless.kafka.svc.cluster.local:9092,EXTERNAL://<k3s-host의 공인 IP>:30092
-  # 브로커들(컨트롤러 포함)끼리는 INTERNAL 리스너로만 통신
+  advertised.listeners=INTERNAL://kafka-broker-0.kafka-bk logroker-headless.kafka.svc.cluster.local:9092,EXTERNAL://<K3s 호스트 Public IP>:30092
   inter.broker.listener.name=INTERNAL
+
+# externalAccess 는 Helm이 자동으로 Service 만들지 않도록 끄기
+externalAccess:
+  enabled: false
+
+# 기존 service 블록은 INTERNAL 용으로만 남기거나 ClusterIP 쓰기
+service:
+  type: ClusterIP
+  port: 9092
 
 # 하지만 broker의 리소스를 아껴 전체 클러스터의 리소스 제한에 맞추기 위해
 # zookeeper 모드를 통해 Kafka 클러스터 배포
@@ -141,15 +144,6 @@ broker:
 defaultInitContainers:
   autoDiscovery:
     enabled: true
-
-# EXTERNAL 리스너·서비스 자동 생성 끄기
-externalAccess:
-  enabled: false
-
-# ClusterIP 내부용 서비스만 남긴 상태로 설정
-service:
-  type: ClusterIP    
-  port: 9092
 
 # 호스트 경로 방식의 간편한 저장소
 persistence:

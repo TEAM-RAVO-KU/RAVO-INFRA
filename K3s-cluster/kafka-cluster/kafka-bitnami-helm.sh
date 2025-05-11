@@ -120,6 +120,15 @@ kubectl -n kafka exec -it kafka-broker-0 -- \
     --bootstrap-server localhost:9092 --create \
     --topic quick --partitions 1 --replication-factor 1
 
+# kafka 컨테이너(=target=kafka) 안에 netshoot 디버그 컨테이너 붙이기
+kubectl debug kafka-broker-0 -n kafka \
+  --image=nicolaka/netshoot \
+  --target=kafka-broker-0 -it
+
+# 프롬프트가 바뀌면 내부에서
+ss -ltnp
+netstat -tnlp
+
 
 
 
