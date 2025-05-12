@@ -110,6 +110,15 @@ kubectl -n kafka exec kafka-broker-0 -- \
   grep -E '^(listeners|advertised\.listeners|listener\.security\.protocol\.map)' \
   /opt/bitnami/kafka/config/server.properties
 
+: << "END"
+# 아래가 정상 출력 (SASL 비활성화를 위해 덮어쓴 상태, EXTERNAL에 호스트의 공인 IP 설정)
+Defaulted container "kafka" out of: kafka, kafka-init (init)
+listeners=CLIENT://:9092,INTERNAL://:9094,EXTERNAL://:9095
+listener.security.protocol.map=CLIENT:SASL_PLAINTEXT,INTERNAL:SASL_PLAINTEXT,EXTERNAL:SASL_PLAINTEXT
+advertised.listeners=CLIENT://kafka-broker-0.kafka-broker-headless.kafka.svc.cluster.local:9092,INTERNAL://kafka-broker-0.kafka-broker-headless.kafka.svc.cluster.local:9094,EXTERNAL://<Host Public IP>:30092
+listener.security.protocol.map=CLIENT:PLAINTEXT,INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
+END
+
 kubectl -n kafka exec kafka-broker-0 -- printenv
 
 # 실제로 해당 NodePort에 대한 패킷 캡처
@@ -161,3 +170,17 @@ helm repo update
 helm repo remove prometheus-community
 helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
 helm repo update
+
+
+
+### [ERROR: org.apache.kafka.common.errors.DisconnectException 트러블슈팅팅]
+kubectl -n kafka get svc kafka-broker-0-external -o yaml
+
+: << "END"
+# externalTrafficPolicy Cluster 확인인
+spec:
+  clusterIP: 10.43.174.133
+  clusterIPs:
+  - 10.43.174.133
+  externalTrafficPolicy: Cluster
+END
