@@ -52,6 +52,13 @@ spec:
       containers:
         - name: mysql-active
           image: mysql:latest
+          # Failover를 위한 readinessProbe 설정
+          readinessProbe:
+            exec:
+              command:
+                - mysqladmin
+                - ping
+                - "-h127.0.0.1"
           ports:
             - containerPort: 3306
           env:
@@ -59,8 +66,8 @@ spec:
               value: root
             - name: MYSQL_ROOT_HOST # 루트 계정을 원격 접속 허용하려면 MYSQL_ROOT_HOST=%를 추가
               value: "%"
-            - name: MYSQL_DATABASE
-              value: active_db
+              # Failover를 위해 DB 이름 통일
+              value: ravo_db
             - name: MYSQL_USER
               value: active_user
             - name: MYSQL_PASSWORD

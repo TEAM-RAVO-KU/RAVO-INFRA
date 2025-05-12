@@ -60,7 +60,8 @@ spec:
             - name: MYSQL_ROOT_HOST # 루트 계정을 원격 접속 허용하려면 MYSQL_ROOT_HOST=%를 추가
               value: "%"
             - name: MYSQL_DATABASE
-              value: standby_db
+              # Failover를 위해 DB 이름 통일
+              value: ravo_db
             - name: MYSQL_USER
               value: standby_user
             - name: MYSQL_PASSWORD

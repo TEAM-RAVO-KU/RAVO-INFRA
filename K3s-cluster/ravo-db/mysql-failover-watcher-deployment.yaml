@@ -1,0 +1,116 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: mysql-failover-watcher
+  namespace: default
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: mysql-failover-role
+  namespace: default
+rules:
+  - apiGroups: [""]
+    resources: ["services","endpoints","pods"]
+    verbs: ["get","patch","list","watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: mysql-failover-binding
+  namespace: default
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: mysql-failover-role
+subjects:
+  - kind: ServiceAccount
+    name: mysql-failover-watcher
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql-failover-watcher
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql-failover-watcher
+  template:
+    metadata:
+      labels:
+        app: mysql-failover-watcher
+    spec:
+      hostNetwork: true
+      serviceAccountName: mysql-failover-watcher
+      volumes:
+        - name: state-volume
+          emptyDir: {}
+      containers:
+        # kubectl-watcher 컨테이너: 서비스 셀렉터 패치
+        - name: kubectl-watcher
+          image: bitnami/kubectl:latest   # kubectl 내장 이미지를 사용
+          volumeMounts:
+            - name: state-volume
+              mountPath: /state
+          command:
+            - /bin/sh
+            - -c
+            - |
+              PREV_STATE=""
+              while true; do
+                # Active Deployment Pod 중 Ready 상태 개수 조회
+                EP_ACTIVE=$(kubectl get pods -l app=mysql-active \
+                  -o jsonpath='{.items[?(@.status.containerStatuses[0].ready==true)]}' \
+                  | wc -w)
+
+                # EP_ACTIVE가 0이면 standby, 그 외엔 active
+                if [ "$EP_ACTIVE" -lt 1 ]; then
+                  DESIRED_STATE="standby"
+                else
+                  DESIRED_STATE="active"
+                fi
+
+                # 상태가 바뀌었을 때만 Service selector 패치
+                if [ "$DESIRED_STATE" != "$PREV_STATE" ]; then
+                  kubectl patch svc mysql-active-service \
+                    --type=json \
+                    -p "[{\"op\":\"replace\",\"path\":\"/spec/selector/app\",\"value\":\"mysql-${DESIRED_STATE}\"}]"
+                  
+                  # 상태를 /state/state 파일에 기록
+                  echo "${DESIRED_STATE}" > /state/state
+                fi
+
+                # 로그 출력
+                echo "$(date '+%Y-%m-%d %H:%M:%S') [FailoverWatcher] State→${DESIRED_STATE} (prev=${PREV_STATE}) ActiveReady=${EP_ACTIVE}"
+
+                PREV_STATE="$DESIRED_STATE"
+                sleep 15
+              done
+        # conntrack-watcher 테이너 : conntrack 테이블 플러시
+        # # Standby -> Active 전환시 아래 Sidecar Container를 통해 Gracefully MySQL TCP 연결 해제
+        - name: conntrack-watcher
+          image: nicolaka/netshoot:latest
+          securityContext:
+            capabilities:
+              add: ["NET_ADMIN"]
+          volumeMounts:
+            - name: state-volume
+              mountPath: /state
+          command:
+            - /bin/sh
+            - -c
+            - |
+              PREV_FILE_STATE=""
+              while true; do
+                if [ -f /state/state ]; then
+                  CUR_STATE=$(cat /state/state)
+                  # 상태가 바뀌었으면 conntrack 삭제
+                  if [ "$CUR_STATE" != "$PREV_FILE_STATE" ]; then
+                    conntrack -D -p tcp --dport 32306
+                    echo "$(date '+%Y-%m-%d %H:%M:%S') Flushed conntrack for 32306 (state=${CUR_STATE})"
+                  fi
+                  PREV_FILE_STATE="$CUR_STATE"
+                fi
+                sleep 5
+              done

@@ -12,6 +12,9 @@ sudo iptables -t nat -L -n --line-numbers
 # 이후 수동으로 iptables를 규칙을 정의하여 enp2s0와 lo에 대해
 # 이후 메타데이터(30092) 연결에 대해서는 9095→30092로 점프할 수 있도록 허용
 # 외부에서 들어오는 패킷(PREROUTING)에 대한 규칙
+
+
+
 sudo iptables -t nat -I PREROUTING \
 	-i enp2s0 -p tcp --dport 30092 \
 	-j REDIRECT --to-ports 9095
