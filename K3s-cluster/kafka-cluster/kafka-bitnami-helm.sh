@@ -184,3 +184,11 @@ spec:
   - 10.43.174.133
   externalTrafficPolicy: Cluster
 END
+
+
+
+### [__consumer_offsets 토픽 Replica 3 생성 오류]
+: << "END"
+[2025-05-12 08:14:05,755] INFO [Admin Manager on Broker 100]: Error processing create topic request CreatableTopic(name='__consumer_offsets', numPartitions=50, replicationFactor=3, assignments=[], configs=[CreateableTopicConfig(name='compression.type', value='producer'), CreateableTopicConfig(name='cleanup.policy', value='compact'), CreateableTopicConfig(name='segment.bytes', value='104857600')]) (kafka.server.ZkAdminManager)
+org.apache.kafka.common.errors.InvalidReplicationFactorException: Replication factor: 3 larger than available brokers: 1.
+END
