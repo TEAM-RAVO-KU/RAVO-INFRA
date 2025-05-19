@@ -1,0 +1,17 @@
+# MySQL CDC를 위한 ConfigMap
+# 별도로 Deployment에 적용해주어야 함
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mysql-cdc-config
+data:
+  99-debezium.cnf: |
+    [mysqld]
+    server-id                        = 223344          # 클러스터 내 고유값
+    # log_bin 옵션은 9.x에서 기본 ON 이지만, 파일 접두어를 지정하려면 유지
+    log_bin                          = mysql-bin
+    binlog_format                    = ROW             # Debezium 필수
+    binlog_row_image                 = FULL            # 9.x에서도 유효
+    # 3 일 = 259,200초
+    binlog_expire_logs_seconds       = 259200
+    binlog_expire_logs_auto_purge    = ON              # 기본값 재확인

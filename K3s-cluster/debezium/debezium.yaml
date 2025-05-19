@@ -1,0 +1,121 @@
+# DB 접속 자격증명용 Secret
+apiVersion: v1
+kind: Secret
+metadata:
+  name: debezium-secret
+type: Opaque
+stringData:
+  MYSQL_USER: debezium
+  MYSQL_PASSWORD: dbz!pass
+---
+# Debezium Server MicroProfile Config
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: debezium-config
+data:
+  application.properties: |
+    ### Sink → Kafka (기본 설정)
+    debezium.sink.type=kafka
+    debezium.sink.kafka.bootstrap.servers=kafka-broker-headless.kafka.svc.cluster.local:9092
+    debezium.sink.kafka.producer.bootstrap.servers=${debezium.sink.kafka.bootstrap.servers}
+    debezium.sink.kafka.producer.key.serializer=org.apache.kafka.common.serialization.StringSerializer
+    debezium.sink.kafka.producer.value.serializer=org.apache.kafka.common.serialization.StringSerializer
+
+    ### Source → MySQL(active)
+    debezium.source.connector.class=io.debezium.connector.mysql.MySqlConnector
+    debezium.source.database.hostname=mysql-active-service
+    debezium.source.database.port=3306
+    debezium.source.database.user=${MYSQL_USER}
+    debezium.source.database.password=${MYSQL_PASSWORD}
+    debezium.source.database.server.id=223344
+    debezium.source.database.server.name=ravo_db
+    debezium.source.database.include.list=ravo_db
+    debezium.source.table.include.list=ravo_db.integrity_data
+    debezium.source.topic.prefix=ravo_db
+
+    ### Kafka Connect Worker가 요구하는 최상위 설정들
+    offset.storage=org.apache.kafka.connect.storage.KafkaOffsetBackingStore
+    offset.storage.bootstrap.servers=${debezium.sink.kafka.bootstrap.servers}
+    # 최상위 debezium.source.bootstrap.servers 설정 필수적으로 추가
+    debezium.source.bootstrap.servers=${debezium.sink.kafka.bootstrap.servers}
+    offset.storage.topic=debezium-offsets
+    offset.storage.partitions=1
+    offset.storage.replication.factor=1
+
+    ### Offset 저장소 (Connector 레벨 설정, 가독성용으로 유지)
+    debezium.source.offset.storage=org.apache.kafka.connect.storage.KafkaOffsetBackingStore
+    debezium.source.offset.storage.bootstrap.servers=${debezium.sink.kafka.bootstrap.servers}
+    debezium.source.offset.storage.topic=debezium-offsets
+    debezium.source.offset.storage.partitions=1
+    debezium.source.offset.storage.replication.factor=1
+
+    ### Schema-history 저장소 (Kafka)
+    debezium.source.schema.history.internal=io.debezium.storage.kafka.history.KafkaSchemaHistory
+    debezium.source.schema.history.internal.kafka.bootstrap.servers=${debezium.sink.kafka.bootstrap.servers}
+    debezium.source.schema.history.internal.kafka.topic=debezium-schema-history
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: debezium-server
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: debezium-server }
+  template:
+    metadata:
+      labels: { app: debezium-server }
+    spec:
+      containers:
+        - name: dbz
+          #  Quay 레지스트리 :contentReference[oaicite:0]{index=0} 
+          image: quay.io/debezium/server:3.1.1.Final
+          envFrom:
+            - secretRef: { name: debezium-secret }
+          volumeMounts:
+            # Config 파일을 Debezium이 찾는 위치(/debezium/config)로 폴더 통째로 주입
+            - name: cfg
+              mountPath: /debezium/config
+          resources:
+            requests:
+              memory: "350Mi"
+              cpu: "100m"
+            limits:
+              memory: "500Mi"
+              cpu: "300m"
+          ports:
+            - containerPort: 8080   # health / metrics
+          # probe 에서 broker ContainerPort 번호를 직접 지정
+          # startupProbe를 길게 설정하여 초기 debezium 서버 배포 안정화
+          startupProbe:
+            httpGet: { path: /q/health/live,  port: 8080 }
+            failureThreshold: 600
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /q/health/live,  port: 8080 }
+            initialDelaySeconds: 20
+            periodSeconds: 15
+          readinessProbe:
+            httpGet: { path: /q/health/ready, port: 8080 }
+            initialDelaySeconds: 20
+            periodSeconds: 15
+      volumes:
+         - name: cfg
+           configMap:
+             name: debezium-config
+---
+# 내부 접근용 Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: debezium-server
+spec:
+  type: ClusterIP
+  selector:
+    app: debezium-server
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
