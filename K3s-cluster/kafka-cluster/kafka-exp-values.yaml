@@ -1,22 +1,20 @@
-replicaCount: 1
-resources:
-  requests:
-    cpu: 50m
-    memory: 64Mi
-  limits:
-    cpu: 100m
-    memory: 128Mi
-
-# Kafka 접속 정보
-kafkaServer:
-  - kafka.kafka.svc.cluster.local:9092
-
-rbac:
-  create: true
-
-# Prometheus Scrape
-serviceMonitor:
-  enabled: true
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: kafka-exporter-sm
   namespace: monitoring
   labels:
     release: prometheus-stack
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kafka-exporter    # 실제 Kafka Exporter Service의 라벨
+      app.kubernetes.io/instance: kafka
+  namespaceSelector:
+    matchNames:
+      - kafka
+  endpoints:
+    - port: metrics   # Service에 정의된 포트 이름(혹은 포트 번호)
+      path: /metrics
+      interval: 30s
+      scrapeTimeout: 10s

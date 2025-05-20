@@ -5,7 +5,7 @@ cd ~/Downloads/kafka_2.13-4.0.0
 default.api.timeout.ms=120000
 request.timeout.ms=120000
 
-### Produce, Consume 시 Topic이 우선 1개라는 점 주의
+### Produce, Consume 시 --replication-factor을 1개로 설정
 # Topic 생성
 bin/kafka-topics.sh \
   --bootstrap-server _:9095  \
