@@ -82,9 +82,6 @@ spec:
           volumeMounts:
             - name: mysql-active-data
               mountPath: /var/lib/mysql
-            # /etc/mysql/conf.d 디렉터리로 volume 마운트
-            - name: mysql-cdc
-              mountPath: /etc/mysql/conf.d
         # mysqld_exporter sidecar
         - name: mysqld-exporter-active
           image: prom/mysqld-exporter:latest
@@ -106,10 +103,6 @@ spec:
         - name: mysql-exporter-config
           configMap:
             name: mysql-exporter-config
-        # cdc 사용을 위한 ConfigMap volume 마운트
-        - name: mysql-cdc
-          configMap:
-            name: mysql-cdc-config
 ---
 apiVersion: v1
 kind: Service
