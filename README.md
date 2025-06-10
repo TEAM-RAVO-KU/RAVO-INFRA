@@ -1,5 +1,6 @@
 ### Architecture Design
-![Graduation-Project-Final Goal drawio](https://github.com/user-attachments/assets/eda24ed2-c68a-479f-a332-e0e58d7de7f7)
+![Graduation-Project-Final Goal drawio](https://github.com/user-attachments/assets/15bddccf-3572-41f7-aa60-a5d635401964)
+
 
 - Cloud Orchestration 표준인 K8s의 Helm을 통해 배포 가능하도록 구성  
 - Live DB Server에 덤핑을 주기적으로 요청하여 Host Standby 상태의 별도 DB Server에 현재 데이터를 저장할 수 있도록 구현  
