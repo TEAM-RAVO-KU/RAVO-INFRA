@@ -1,3 +1,9 @@
+image:
+  registry: docker.io
+  repository: bitnami/kafka
+  # Docker Hub에서 확인한 유효한 태그를 입력
+  tag: 3.7.1-debian-12-r22
+
 # bitnami 최신 Kafka 차트와 Kafka 최신 버전 (3.x 이상)에서는 KRaft 모드 사용 권장 
 
 # KRaft 모드는 ZooKeeper 없이 내장된 Raft 합의 기반 Quorum Controller로 메타데이터 관리를

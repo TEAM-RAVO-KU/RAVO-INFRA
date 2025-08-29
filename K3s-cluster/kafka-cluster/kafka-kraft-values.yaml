@@ -1,0 +1,87 @@
+image:
+  registry: docker.io
+  repository: bitnami/kafka
+  tag: 3.7.0
+
+global:
+  storageClass: "local-path"
+
+# Kraft 모드 활성화 (Zookeeper 비활성화)
+kraft:
+  enabled: true
+  # 'controller:' 블록 없이 바로 replicaCount를 지정정
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: 500m
+      memory: 512Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+# Kraft 모드를 사용하므로 Zookeeper 비활성화
+zookeeper:
+  enabled: false
+
+broker:
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: 1000m
+      memory: 1536Mi
+    limits:
+      cpu: 1000m
+      memory: 1536Mi
+
+# [TroubleShooting: SASL Error]
+# 인증 방식을 SASL에서 PLAINTEXT로 변경하여 인증 오류를 방지
+auth:
+  clientProtocol: plaintext
+  interBrokerProtocol: plaintext
+  sasl:
+    # 빈 배열로 설정하여 SASL 메커니즘을 완전히 비활성화
+    enabledMechanisms: []
+  tls:
+    type: ""
+
+# [TroubleShooting: SASL Error & Timed out waiting for a node assignment]
+# 브로커의 리스너 설정을 명시적으로 덮어씁니다.
+# Bitnami 차트의 기본 리스너 설정을 무시하고, 모든 리스너(CLIENT, INTERNAL, EXTERNAL)가
+# PLAINTEXT 프로토콜을 사용하도록 강제하여 연결 문제를 해결합니다.
+extraConfig: |-
+  listener.security.protocol.map=CLIENT:PLAINTEXT,INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
+
+# 외부 접속 설정
+externalAccess:
+  enabled: true
+  # 컨트롤러의 외부 접속을 비활성화합니다.
+  controller:
+    enabled: false
+  broker:
+    service:
+      type: NodePort
+      # 외부 리스너가 사용할 포트를 지정
+      ports:
+        external: 9092 # 기본 PLAINTEXT 포트
+      # 브로커별로 할당할 NodePort를 지정
+      nodePorts: [30092]
+      # [TroubleShooting: k3s hairpin/reflection 이슈]
+      # Service가 externalIPs 대신 NodePort 경로로만 동작하도록 설정하여
+      # 특정 환경에서 발생하는 리턴 패킷 유실 문제를 방지합니다.
+      useHostIPs: false
+    autoDiscovery:
+    # 브로커가 자신의 외부 IP를 자동으로 광고하는 기능을 비활성화
+    # 이를 통해 NAT 환경에서 Public IP를 직접 지정할 수 있음
+      enabled: false
+    # 외부 클라이언트가 접속할 Public IP 또는 도메인을 지정
+    # 반드시 실제 환경에 맞게 수정
+    domain: <Host Public IP>
+
+# [TroubleShooting: __consumer_offsets 토픽 Replica ERR]
+# 내부 토픽의 복제 계수를 브로커 수(3)에 맞춰 설정합니다.
+# 브로커가 1대일 경우 이 값을 1로 설정해야 합니다. (현재 replicaCount=1이므로 1로 설정)
+# 만약 replicaCount를 3으로 늘릴 경우, 이 값도 3으로 변경해야 합니다.
+configuration: |-
+  offsets.topic.replication.factor=1
+  transaction.state.log.replication.factor=1
+  transaction.state.log.min.isr=1
