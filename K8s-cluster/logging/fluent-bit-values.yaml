@@ -1,0 +1,62 @@
+# Kubernetes API 접근을 위한 RBAC 생성
+rbac:
+  create: true
+
+# DaemonSet으로 배포하여 모든 노드에 Pod가 하나씩 실행되도록 보장
+kind: DaemonSet
+
+resources:
+  requests:
+    cpu: "50m"
+    memory: "50Mi"
+  limits:
+    cpu: "100m"
+    memory: "100Mi"
+
+# 마스터 노드의 Taint를 무시하고 파드를 스케줄링하도록 설정
+tolerations:
+- key: "node-role.kubernetes.io/control-plane"
+  operator: "Exists"
+  effect: "NoSchedule"
+- key: "node-role.kubernetes.io/master"
+  operator: "Exists"
+  effect: "NoSchedule"
+
+config:
+  # INPUT: 컨테이너 로그 수집
+  inputs: |
+    [INPUT]
+        Name              tail
+        Tag               kube.*
+        Path              /var/log/containers/*.log
+        Parser            cri
+        DB                /var/log/flb_kube.db
+        Mem_Buf_Limit     5MB
+        # fluent-bit 자신과 kube-system 네임스페이스 로그는 수집에서 제외
+        Exclude_Path      *fluent-bit*,*kube-system*
+
+  # FILTER: Kubernetes 메타데이터(pod, namespace, labels 등) 추가
+  filters: |
+    [FILTER]
+        Name                kubernetes
+        Match               kube.*
+        Kube_URL            https://kubernetes.default.svc:443
+        Kube_CA_File        /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+        Kube_Token_File     /var/run/secrets/kubernetes.io/serviceaccount/token
+        Merge_Log           On
+        Merge_Log_Key       log_processed
+
+  # OUTPUT: Elasticsearch로 로그 전송
+  outputs: |
+    [OUTPUT]
+        Name                es
+        Match               *
+        # Elasticsearch 서비스 주소
+        Host                elasticsearch-master.logging.svc.cluster.local
+        Port                9200
+        # 이 설정을 통해 'k8s-log-YYYY.MM.DD' 형식의 일별 인덱스가 생성됨
+        Logstash_Format     On
+        Logstash_Prefix     k8s-log
+        # Index 이름에 '.' 이 들어가는 것을 허용
+        Replace_Dots        On
+        Retry_Limit         False
