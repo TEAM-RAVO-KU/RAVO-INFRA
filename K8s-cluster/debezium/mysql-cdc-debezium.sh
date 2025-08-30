@@ -10,9 +10,9 @@ kubectl -n default patch deploy mysql-active \
      "value":{"name":"mysql-cdc","mountPath":"/etc/mysql/conf.d/99-debezium.cnf","subPath":"99-debezium.cnf"}}
   ]'
 
-kubectl rollout restart deployment mysql-standby
+kubectl rollout restart deployment mysql-active
 
-kubectl exec -it pod/mysql-standby-XXXX -- bash
+kubectl exec -it pod/mysql-active-XXXX -- bash
 # ConfigMap 적용 확인
 ls -l /etc/mysql/conf.d/99-debezium.cnf
 cat /etc/mysql/conf.d/99-debezium.cnf

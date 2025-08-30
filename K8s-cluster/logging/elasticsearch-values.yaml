@@ -1,0 +1,22 @@
+# 단일 노드 클러스터로 설정
+replicas: 1
+minimumMasterNodes: 1
+
+# 리소스 요청 및 제한
+resources:
+  requests:
+    cpu: "500m"
+    memory: "1Gi"
+  limits:
+    cpu: "1"
+    memory: "1Gi"
+
+# Persistent Volume 설정
+volumeClaimTemplate:
+  accessModes: [ "ReadWriteOnce" ]
+  # `local-path' 스토리지 클래스 지정
+  storageClassName: "local-path"
+  resources:
+    requests:
+      # 스토리지 크기는 필요시 증설
+      storage: 20Gi 

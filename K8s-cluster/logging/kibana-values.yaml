@@ -1,0 +1,16 @@
+# Kibana가 통신할 Elasticsearch 클러스터의 서비스 주소
+elasticsearchHosts: "http://elasticsearch-master.logging.svc.cluster.local:9200"
+
+resources:
+  requests:
+    cpu: "200m"
+    memory: "512Mi"
+  limits:
+    cpu: "500m"
+    memory: "512Mi"
+
+# 외부 접근을 위한 NodePort 설정
+service:
+  type: NodePort
+  port: 5601
+  nodePort: 30561

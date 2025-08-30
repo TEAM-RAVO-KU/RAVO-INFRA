@@ -22,9 +22,9 @@ data:
     debezium.sink.kafka.producer.key.serializer=org.apache.kafka.common.serialization.StringSerializer
     debezium.sink.kafka.producer.value.serializer=org.apache.kafka.common.serialization.StringSerializer
 
-    ### Source → MySQL(standby)
+    ### Source → MySQL(active)
     debezium.source.connector.class=io.debezium.connector.mysql.MySqlConnector
-    debezium.source.database.hostname=mysql-standby-service
+    debezium.source.database.hostname=mysql-active-service
     debezium.source.database.port=3306
     debezium.source.database.user=${MYSQL_USER}
     debezium.source.database.password=${MYSQL_PASSWORD}
