@@ -31,7 +31,8 @@ data:
     debezium.source.database.server.id=223344
     debezium.source.database.server.name=ravo_db
     debezium.source.database.include.list=ravo_db
-    debezium.source.table.include.list=ravo_db.integrity_data
+    # 주석 처리하여 특정 테이블만 감지하는 설정을 비활성화
+    # debezium.source.table.include.list=ravo_db.integrity_data
     debezium.source.topic.prefix=ravo_db
 
     ### Kafka Connect Worker가 요구하는 최상위 설정들

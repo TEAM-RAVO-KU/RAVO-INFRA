@@ -27,7 +27,7 @@ spec:
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: mysql-exporter-config
+  name: mysql-exporter-config-standby
 data:
   .my.cnf: |
     [client]
@@ -68,7 +68,7 @@ spec:
               value: standby_pass
           resources:
             limits:
-              memory: "512Mi"
+              memory: "812Mi"
               cpu: "500m"
             requests:
               memory: "256Mi"
@@ -76,9 +76,6 @@ spec:
           volumeMounts:
             - name: mysql-standby-data
               mountPath: /var/lib/mysql
-            # /etc/mysql/conf.d 디렉터리로 volume 마운트
-            - name: mysql-cdc
-              mountPath: /etc/mysql/conf.d
         # mysqld_exporter sidecar
         - name: mysqld-exporter-active
           image: prom/mysqld-exporter:latest
@@ -90,20 +87,16 @@ spec:
             limits:
               memory: "128Mi"
           volumeMounts:
-            - name: mysql-exporter-config
+            - name: mysql-exporter-config-standby
               mountPath: /config/.my.cnf
               subPath: .my.cnf
       volumes:
         - name: mysql-standby-data
           persistentVolumeClaim:
             claimName: mysql-standby-pvc
-        - name: mysql-exporter-config
+        - name: mysql-exporter-config-standby
           configMap:
-            name: mysql-exporter-config
-        # cdc 사용을 위한 ConfigMap volume 마운트
-        - name: mysql-cdc
-          configMap:
-            name: mysql-cdc-config
+            name: mysql-exporter-config-standby
 ---
 apiVersion: v1
 kind: Service
@@ -118,10 +111,10 @@ spec:
       protocol: TCP
       port: 3306
       targetPort: 3306
-      nodePort: 32307
+      nodePort: 32317
     # mysqld_exporter
     - name: metrics
       protocol: TCP
       port: 9104
       targetPort: 9104
-      nodePort: 32105
+      nodePort: 32115
