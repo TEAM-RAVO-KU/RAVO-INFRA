@@ -28,7 +28,15 @@ OUTPUT
   --delete \
   --topic debezium-schema-history \
   --command-config ./kafka-client.properties
-# 3. debezium 재배포
+# 3. debezium-offsets를 cleanup.policy=compact로 재생성
+./kafka_2.13-3.5.1/bin/kafka-topics.sh \
+  --bootstrap-server _:9095 \
+  --create \
+  --topic debezium-offsets \
+  --partitions 1 \
+  --replication-factor 1 \
+  --config cleanup.policy=compact
+# 4. debezium 재배포
 k apply -f debezium.yaml
 
 
