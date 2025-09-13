@@ -61,6 +61,9 @@ SHOW BINARY LOGS;
 2 rows in set (0.002 sec)
 END
 
+# Active DB에서 실행 (만약 ravo_db 매니페스트 때문에 누락되었을 시)
+CREATE DATABASE ravo_db;
+
 # 초기 사용자 PRIVILEGES 명시
 ALTER USER 'root'@'localhost' IDENTIFIED BY '<NEW_PW>';
 CREATE USER 'root'@'%' IDENTIFIED BY '<NEW_PW>';
