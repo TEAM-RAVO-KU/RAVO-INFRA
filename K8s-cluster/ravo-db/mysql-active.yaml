@@ -63,18 +63,17 @@ spec:
                 - "-h127.0.0.1"
           ports:
             - containerPort: 3306
-          env:
-            - name: MYSQL_ROOT_PASSWORD
-              value: root
-            - name: MYSQL_ROOT_HOST # 루트 계정을 원격 접속 허용하려면 MYSQL_ROOT_HOST=%를 추가
-              value: "%"
-            - name: MYSQL_DATABASE
-              # Failover를 위해 DB 이름 통일
-              value: ravo_db
-            - name: MYSQL_USER
-              value: active_user
-            - name: MYSQL_PASSWORD
-              value: active_pass
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              value: root
+            - name: MYSQL_ROOT_HOST
+              value: "%"
+            - name: MYSQL_DATABASE # 이 부분이 별도의 항목으로 정의되어야 함함
+              value: ravo_db
+            - name: MYSQL_USER
+              value: active_user
+            - name: MYSQL_PASSWORD
+              value: active_pass
           resources:
             limits:
               memory: "812Mi"

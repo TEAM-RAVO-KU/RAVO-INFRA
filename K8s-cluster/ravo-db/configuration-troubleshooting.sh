@@ -99,8 +99,14 @@ SHOW BINLOG EVENTS IN 'binlog.000003';
 18 rows in set (0.001 sec)
 
 ############ [Active/Standby DB]
+# exporter를 위해 'root'@'localhost'로 비밀번호 'root' 권한 부여
+ALTER USER 'root'@'localhost' IDENTIFIED BY 'root';
+GRANT ALL PRIVILEGES ON *.* TO 'root'@'localhost' WITH GRANT OPTION;
+CREATE USER 'root'@'127.0.0.1' IDENTIFIED BY 'root';
+GRANT ALL PRIVILEGES ON *.* TO 'root'@'127.0.0.1' WITH GRANT OPTION;
+FLUSH PRIVILEGES;
+
 # 초기 사용자 PRIVILEGES 명시
-ALTER USER 'root'@'localhost' IDENTIFIED BY '<NEW_PW>';
 CREATE USER 'root'@'%' IDENTIFIED BY '<NEW_PW>';
 GRANT ALL PRIVILEGES ON *.* TO 'root'@'%' WITH GRANT OPTION;
 FLUSH PRIVILEGES;
