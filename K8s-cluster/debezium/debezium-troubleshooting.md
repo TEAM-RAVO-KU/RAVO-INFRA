@@ -18,8 +18,8 @@ MySQL wait_timeout 초과: MySQL 서버는 일정 시간(기본값 8시간) 동�
 - `1 task(s) out of 1 failed to start.`
   Debezium의 핵심 작업(Task), 즉 MySQL에 연결하여 변경 데이터를 읽어오는 가장 중요한 컴포넌트가 시작조차 하지 못했다는 의미입니다.
 - `java.lang.InterruptedException: Time out while waiting for source task to start.`
-  이것이 가장 핵심적인 에러 메시지입니다. Debezium 엔진이 MySQL 커넥터 작업이 시작되기를 기다렸지만, 정해진 시간 내에 응답이 없어 시간 초과(Time out)로 실패 처리했음을 의미합니다.
+  Debezium 엔진이 MySQL 커넥터 작업이 시작되기를 기다렸지만, 정해진 시간 내에 응답이 없어 Time out느느로 실패 처리했음을 의미합니다.
 - `Engine state has changed from 'STARTING_TASKS' to 'STOPPING'`
-  핵심 작업 시작에 실패했으므로, Debezium 엔진 전체가 스스로 멈추는(STOPPING) 단계로 진입했음을 보여줍니다.
+  핵심 작업 시작에 실패했으므로, Debezium 엔진 전체가 스스로 STOPPING 단계로 진입했음을 보여줍니다.
 - `{"name":"debezium","status":"DOWN"}`
-  엔진이 멈췄기 때문에, Health Check는 당연히 실패(DOWN) 상태를 반환하고, 결국 이 상태를 감지한 Kubernetes가 Pod를 재시작시키는 것입니다.
+  엔진이 멈췄기 때문에, Health Check는 당연히 DOWN 상태를 반환하고, 결국 이 상태를 감지한 Kubernetes가 Pod를 재시작시키는 것입니다.

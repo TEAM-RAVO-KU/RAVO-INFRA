@@ -20,14 +20,12 @@ OUTPUT
 ./kafka_2.13-3.5.1/bin/kafka-topics.sh \
   --bootstrap-server _:9095 \
   --delete \
-  --topic debezium-offsets \
-  --command-config ./kafka-client.properties
+  --topic debezium-offsets
 # 2. schema-history 토픽 삭제
 ./kafka_2.13-3.5.1/bin/kafka-topics.sh \
   --bootstrap-server _:9095 \
   --delete \
-  --topic debezium-schema-history \
-  --command-config ./kafka-client.properties
+  --topic debezium-schema-history
 # 3. debezium-offsets를 cleanup.policy=compact로 재생성
 ./kafka_2.13-3.5.1/bin/kafka-topics.sh \
   --bootstrap-server _:9095 \
@@ -38,7 +36,6 @@ OUTPUT
   --config cleanup.policy=compact
 # 4. debezium 재배포
 k apply -f debezium.yaml
-
 
 
 << "SQL"
