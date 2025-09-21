@@ -1,0 +1,25 @@
+## Recovery 및 Debezium 유지 시 K8s Pod Restart
+```bash
+[root@master ravo]# k logs -f debezium-server-578c9594d-7q2h6
+...
+{"timestamp":"2025-09-21T04:33:17.274872598Z","sequence":565,"loggerClassName":"io.smallrye.health.HealthLogging_$logger","loggerName":"io.smallrye.health","level":"INFO","message":"SRHCK01001: Reporting health down status: {\"status\":\"DOWN\",\"checks\":[{\"name\":\"debezium\",\"status\":\"DOWN\"}]}","threadName":"vert.x-eventloop-thread-1","threadId":29,"mdc":{},"ndc":"","hostName":"debezium-server-578c9594d-7q2h6","processName":"/usr/lib/jvm/java-21-openjdk-21.0.7.0.6-2.el8.x86_64/bin/java","processId":1}
+{"timestamp":"2025-09-21T04:33:27.275289767Z","sequence":566,"loggerClassName":"io.smallrye.health.HealthLogging_$logger","loggerName":"io.smallrye.health","level":"INFO","message":"SRHCK01001: Reporting health down status: {\"status\":\"DOWN\",\"checks\":[{\"name\":\"debezium\",\"status\":\"DOWN\"}]}","threadName":"vert.x-eventloop-thread-0","threadId":28,"mdc":{},"ndc":"","hostName":"debezium-server-578c9594d-7q2h6","processName":"/usr/lib/jvm/java-21-openjdk-21.0.7.0.6-2.el8.x86_64/bin/java","processId":1}
+{"timestamp":"2025-09-21T04:33:37.275495056Z","sequence":567,"loggerClassName":"io.smallrye.health.HealthLogging_$logger","loggerName":"io.smallrye.health","level":"INFO","message":"SRHCK01001: Reporting health down status: {\"status\":\"DOWN\",\"checks\":[{\"name\":\"debezium\",\"status\":\"DOWN\"}]}","threadName":"vert.x-eventloop-thread-1","threadId":29,"mdc":{},"ndc":"","hostName":"debezium-server-578c9594d-7q2h6","processName":"/usr/lib/jvm/java-21-openjdk-21.0.7.0.6-2.el8.x86_64/bin/java","processId":1}
+{"timestamp":"2025-09-21T04:33:38.543954856Z","sequence":568,"loggerClassName":"org.slf4j.impl.Slf4jLogger","loggerName":"io.debezium.embedded.async.AsyncEmbeddedEngine","level":"ERROR","message":"1 task(s) out of 1 failed to start.","threadName":"pool-7-thread-1","threadId":27,"mdc":{},"ndc":"","hostName":"debezium-server-578c9594d-7q2h6","processName":"/usr/lib/jvm/java-21-openjdk-21.0.7.0.6-2.el8.x86_64/bin/java","processId":1}
+{"timestamp":"2025-09-21T04:33:38.544518343Z","sequence":569,"loggerClassName":"org.slf4j.impl.Slf4jLogger","loggerName":"io.debezium.embedded.async.AsyncEmbeddedEngine","level":"ERROR","message":"Engine has failed with ","threadName":"pool-7-thread-1","threadId":27,"mdc":{},"ndc":"","hostName":"debezium-server-578c9594d-7q2h6","processName":"/usr/lib/jvm/java-21-openjdk-21.0.7.0.6-2.el8.x86_64/bin/java","processId":1,"exception":{"refId":1,"exceptionType":"java.lang.InterruptedException","message":"Time out while waiting for source task to start.","frames":[{"class":"io.debezium.embedded.async.AsyncEmbeddedEngine","method":"startSourceTasks","line":448},{"class":"io.debezium.embedded.async.AsyncEmbeddedEngine","method":"run","line":216},{"class":"io.debezium.server.DebeziumServer","method":"lambda$start$1","line":182},{"class":"java.util.concurrent.ThreadPoolExecutor","method":"runWorker","line":1144},{"class":"java.util.concurrent.ThreadPoolExecutor$Worker","method":"run","line":642},{"class":"java.lang.Thread","method":"run","line":1583}]}}
+{"timestamp":"2025-09-21T04:33:38.546063595Z","sequence":570,"loggerClassName":"org.slf4j.impl.Slf4jLogger","loggerName":"io.debezium.embedded.async.AsyncEmbeddedEngine","level":"INFO","message":"Engine state has changed from 'STARTING_TASKS' to 'STOPPING'","threadName":"pool-7-thread-1","threadId":27,"mdc":{},"ndc":"","hostName":"debezium-server-578c9594d-7q2h6","processName":"/usr/lib/jvm/java-21-openjdk-21.0.7.0.6-2.el8.x86_64/bin/java","processId":1}
+{"timestamp":"2025-09-21T04:33:47.273122972Z","sequence":571,"loggerClassName":"io.smallrye.health.HealthLogging_$logger","loggerName":"io.smallrye.health","level":"INFO","message":"SRHCK01001: Reporting health down status: {\"status\":\"DOWN\",\"checks\":[{\"name\":\"debezium\",\"status\":\"DOWN\"}]}","threadName":"vert.x-eventloop-thread-0","threadId":28,"mdc":{},"ndc":"","hostName":"debezium-server-578c9594d-7q2h6","processName":"/usr/lib/jvm/java-21-openjdk-21.0.7.0.6-2.el8.x86_64/bin/java","processId":1}
+...
+```
+### 문제 원인
+MySQL wait_timeout 초과: MySQL 서버는 일정 시간(기본값 8시간) 동안 아무런 요청이 없는 Idle 커넥션을 보안 및 리소스 관리를 위해 강제로 끊어버립니다. Debezium이 변경 사항을 감지하느라 한동안 쿼리를 보내지 않으면, MySQL 서버가 먼저 연결을 종료할 수 있습니다. Debezium은 이 사실을 모른 채 끊어진 커넥션을 사용하려다 실패하고, 이는 결국 Liveness Probe 실패로 이어집니다.
+
+### 로그 분석
+- `1 task(s) out of 1 failed to start.`
+  Debezium의 핵심 작업(Task), 즉 MySQL에 연결하여 변경 데이터를 읽어오는 가장 중요한 컴포넌트가 시작조차 하지 못했다는 의미입니다.
+- `java.lang.InterruptedException: Time out while waiting for source task to start.`
+  이것이 가장 핵심적인 에러 메시지입니다. Debezium 엔진이 MySQL 커넥터 작업이 시작되기를 기다렸지만, 정해진 시간 내에 응답이 없어 시간 초과(Time out)로 실패 처리했음을 의미합니다.
+- `Engine state has changed from 'STARTING_TASKS' to 'STOPPING'`
+  핵심 작업 시작에 실패했으므로, Debezium 엔진 전체가 스스로 멈추는(STOPPING) 단계로 진입했음을 보여줍니다.
+- `{"name":"debezium","status":"DOWN"}`
+  엔진이 멈췄기 때문에, Health Check는 당연히 실패(DOWN) 상태를 반환하고, 결국 이 상태를 감지한 Kubernetes가 Pod를 재시작시키는 것입니다.

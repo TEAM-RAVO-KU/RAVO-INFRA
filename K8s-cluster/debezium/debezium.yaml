@@ -35,6 +35,20 @@ data:
     # debezium.source.table.include.list=ravo_db.integrity_data
     debezium.source.topic.prefix=ravo_db
 
+    ### DB 연결 재시도 로직 추가
+    # 커넥터 시작 및 재연결 시 실행할 초기 구문, DB 상태 확인용으로 사용
+    debezium.source.database.initial.statements=SELECT 1
+    # DB 연결 실패 시 재시도 횟수 (1000회)
+    debezium.source.database.query.retries=1000
+    # 재시도 사이의 대기 시간 (10초)
+    debezium.source.database.query.retry.delay.ms=10000
+
+    ### 유휴 커넥션 타임아웃 방지를 위한 Keep-Alive 추가
+    # Keep-Alive 기능을 활성화합니다.
+    debezium.source.connect.keep.alive=true
+    # Keep-Alive 신호를 보내는 주기를 설정합니다. (1분)
+    debezium.source.connect.keep.alive.interval.ms=60000
+
     ### Kafka Connect Worker가 요구하는 최상위 설정들
     offset.storage=org.apache.kafka.connect.storage.KafkaOffsetBackingStore
     offset.storage.bootstrap.servers=${debezium.sink.kafka.bootstrap.servers}
@@ -94,13 +108,16 @@ spec:
             httpGet: { path: /q/health/live,  port: 8080 }
             failureThreshold: 600
             periodSeconds: 10
+          # 기존 debezium-schema-history 토픽에 저장된 모든 DDL을
+          # 처음부터 끝까지 전부 읽어서 메모리에 재구성하는 것을 기다리기 위해
+          # livenessProbe, readinessProbe의 initialDelaySeconds 조정
           livenessProbe:
             httpGet: { path: /q/health/live,  port: 8080 }
-            initialDelaySeconds: 20
+            initialDelaySeconds: 600
             periodSeconds: 15
           readinessProbe:
             httpGet: { path: /q/health/ready, port: 8080 }
-            initialDelaySeconds: 20
+            initialDelaySeconds: 600
             periodSeconds: 15
       volumes:
          - name: cfg
