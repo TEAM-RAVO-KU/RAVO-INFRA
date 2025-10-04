@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ravo-manager-configmap
+data:
+  LIVE_DB_URL: "jdbc:mysql://_:3316/ravo_db?allowPublicKeyRetrieval=true"
+  STANDBY_DB_URL: "jdbc:mysql://_:3317/ravo_db?allowPublicKeyRetrieval=true"
+  MONITORING_ACTIVE_URL: "http://_:3114/metrics"
+  MONITORING_STANDBY_URL: "http://_:3115/metrics"

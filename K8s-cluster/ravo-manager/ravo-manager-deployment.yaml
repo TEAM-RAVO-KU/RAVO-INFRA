@@ -1,0 +1,85 @@
+# k8s/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ravo-manager-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ravo-manager
+  template:
+    metadata:
+      labels:
+        app: ravo-manager
+    spec:
+      containers:
+      - name: ravo-manager
+        image: judemin/ravo-manager:latest
+        resources:
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+        ports:
+        - containerPort: 8080
+        env:
+          # ConfigMap에서 설정값 주입
+          - name: SPRING_DATASOURCE_LIVE_JDBC-URL
+            valueFrom:
+              configMapKeyRef:
+                name: ravo-manager-configmap
+                key: LIVE_DB_URL
+          - name: SPRING_DATASOURCE_STANDBY_JDBC-URL
+            valueFrom:
+              configMapKeyRef:
+                name: ravo-manager-configmap
+                key: STANDBY_DB_URL
+          - name: MONITORING_ENDPOINTS_ACTIVE
+            valueFrom:
+              configMapKeyRef:
+                name: ravo-manager-configmap
+                key: MONITORING_ACTIVE_URL
+          - name: MONITORING_ENDPOINTS_STANDBY
+            valueFrom:
+              configMapKeyRef:
+                name: ravo-manager-configmap
+                key: MONITORING_STANDBY_URL
+
+          # Secret에서 민감 정보 주입
+          - name: SPRING_DATASOURCE_LIVE_USERNAME
+            valueFrom:
+              secretKeyRef:
+                name: ravo-manager-secret
+                key: DB_USERNAME
+          - name: SPRING_DATASOURCE_LIVE_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: ravo-manager-secret
+                key: DB_PASSWORD
+          - name: SPRING_DATASOURCE_STANDBY_USERNAME
+            valueFrom:
+              secretKeyRef:
+                name: ravo-manager-secret
+                key: DB_USERNAME
+          - name: SPRING_DATASOURCE_STANDBY_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: ravo-manager-secret
+                key: DB_PASSWORD
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ravo-manager-service
+spec:
+  type: NodePort
+  selector:
+    app: ravo-manager
+  ports:
+    - protocol: TCP
+      port: 8080
+      targetPort: 8080
+      nodePort: 30999
