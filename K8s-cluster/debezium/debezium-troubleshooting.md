@@ -18,8 +18,13 @@ MySQL wait_timeout 초과: MySQL 서버는 일정 시간(기본값 8시간) 동�
 - `1 task(s) out of 1 failed to start.`
   Debezium의 핵심 작업(Task), 즉 MySQL에 연결하여 변경 데이터를 읽어오는 가장 중요한 컴포넌트가 시작조차 하지 못했다는 의미입니다.
 - `java.lang.InterruptedException: Time out while waiting for source task to start.`
-  Debezium 엔진이 MySQL 커넥터 작업이 시작되기를 기다렸지만, 정해진 시간 내에 응답이 없어 Time out느느로 실패 처리했음을 의미합니다.
+  Debezium 엔진이 MySQL 커넥터 작업이 시작되기를 기다렸지만, 정해진 시간 내에 응답이 없어 Time out으로 실패 처리했음을 의미합니다.
 - `Engine state has changed from 'STARTING_TASKS' to 'STOPPING'`
   핵심 작업 시작에 실패했으므로, Debezium 엔진 전체가 스스로 STOPPING 단계로 진입했음을 보여줍니다.
 - `{"name":"debezium","status":"DOWN"}`
   엔진이 멈췄기 때문에, Health Check는 당연히 DOWN 상태를 반환하고, 결국 이 상태를 감지한 Kubernetes가 Pod를 재시작시키는 것입니다.
+
+```bash
+{"timestamp":"2025-09-21T06:26:56.540980248Z","sequence":561,"loggerClassName":"org.slf4j.impl.Slf4jLogger","loggerName":"io.debezium.util.Threads","level":"INFO","message":"Creating thread debezium-mysqlconnector-ravo_db-binlog-client","threadName":"blc-mysql-active-service:3306","threadId":49,"mdc":{"dbz.taskId":"0","dbz.connectorName":"ravo_db","dbz.connectorType":"MySQL","dbz.connectorContext":"binlog"},"ndc":"","hostName":"debezium-server-84dcf748d8-9s6w2","processName":"/usr/lib/jvm/java-21-openjdk-21.0.7.0.6-2.el8.x86_64/bin/java","processId":1}
+{"timestamp":"2025-09-21T06:26:56.640867328Z","sequence":562,"loggerClassName":"org.slf4j.impl.Slf4jLogger","loggerName":"io.debezium.connector.binlog.BinlogStreamingChangeEventSource","level":"INFO","message":"Keepalive thread is running","threadName":"debezium-mysqlconnector-ravo_db-change-event-source-coordinator","threadId":45,"mdc":{"dbz.taskId":"0","dbz.connectorName":"ravo_db","dbz.connectorType":"MySQL","dbz.connectorContext":"streaming"},"ndc":"","hostName":"debezium-server-84dcf748d8-9s6w2","processName":"/usr/lib/jvm/java-21-openjdk-21.0.7.0.6-2.el8.x86_64/bin/java","processId":1}
+```
