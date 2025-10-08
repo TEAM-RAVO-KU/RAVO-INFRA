@@ -173,7 +173,7 @@ helm repo update
 
 
 
-### [ERROR: org.apache.kafka.common.errors.DisconnectException 트러블슈팅팅]
+### [ERROR: org.apache.kafka.common.errors.DisconnectException 트러블슈팅]
 kubectl -n kafka get svc kafka-broker-0-external -o yaml
 
 : << "END"

@@ -69,6 +69,9 @@ auth:
 # 1단계(bootstrap)는 통과해도 2단계(메타데이터 재접속)에서 클라이언트가 잘못된 주소로 접속을 시도해 타임아웃
 extraConfig: |-
   listener.security.protocol.map=CLIENT:PLAINTEXT,INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
+  # 복제본 설정 (Replication Factor) 추가
+  offsets.topic.replication.factor=1
+  transaction.state.log.replication.factor=1
 
 externalAccess:
   enabled: true
