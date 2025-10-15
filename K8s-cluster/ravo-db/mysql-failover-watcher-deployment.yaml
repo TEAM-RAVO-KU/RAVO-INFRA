@@ -157,7 +157,8 @@ spec:
 
               PORT = 8080
               KUBECTL_PATH = "/shared-bin/kubectl"
-              TARGET_DEPLOYMENT = "mysql-active"
+              ACTIVE_DB_DEPLOYMENT = "mysql-active"
+              DEBEZIUM_DEPLOYMENT = "debezium-server"
 
               class ApiHandler(http.server.SimpleHTTPRequestHandler):
                   def _run_command(self, command):
@@ -169,18 +170,18 @@ spec:
                       self.send_response(status_code)
                       self.send_header("Content-type", "application/json")
                       self.end_headers()
-                      self.wfile.write(json.dumps(data).encode("utf-8"))
+                      self.wfile.write(json.dumps(data, ensure_ascii=False).encode("utf-8"))
 
                   def do_GET(self):
                       try:
                           if self.path == "/status":
                               self.handle_status()
+                          elif self.path == "/scale-down":
+                              self.handle_scale_down()
+                          elif self.path == "/scale-up":
+                              self.handle_scale_up_db()
                           elif self.path == "/recover":
                               self.handle_recover()
-                          elif self.path == "/scale-up":
-                              self.handle_scale(1)
-                          elif self.path == "/scale-down":
-                              self.handle_scale(0)
                           else:
                               self._send_json_response(404, {"error": "Not Found", "path_detected": self.path})
                       except subprocess.CalledProcessError as e:
@@ -190,55 +191,83 @@ spec:
                           self._send_json_response(500, {"error": str(e)})
                           
                   def handle_status(self):
-                      # 서비스 타겟 조회
                       selector_proc = self._run_command(
                           [KUBECTL_PATH, "get", "svc", "mysql-active-service", "-o", "jsonpath={.spec.selector.app}"]
                       )
                       current_selector = selector_proc.stdout.strip()
                       
-                      # Deployment 레플리카 수 조회
-                      try:
-                          replicas_proc = self._run_command(
-                              [KUBECTL_PATH, "get", "deployment", TARGET_DEPLOYMENT, "-o", "jsonpath={.spec.replicas},{.status.readyReplicas}"]
-                          )
-                          desired, ready = replicas_proc.stdout.strip().split(",")
-                          replicas_status = {"desired": int(desired), "ready": int(ready) if ready else 0}
-                      except subprocess.CalledProcessError:
-                          replicas_status = {"error": f"Deployment {TARGET_DEPLOYMENT} not found"}
-
-                      # Watcher 내부 상태 조회
                       try:
                           with open("/state/state", "r") as f:
                               internal_state = f.read().strip()
                       except FileNotFoundError:
                           internal_state = "unknown"
-                      
+
+                      try:
+                          replicas_proc = self._run_command(
+                              [KUBECTL_PATH, "get", "deployment", ACTIVE_DB_DEPLOYMENT, "-o", "jsonpath={.spec.replicas},{.status.readyReplicas}"]
+                          )
+                          desired, ready = replicas_proc.stdout.strip().split(",")
+                          mysql_active_replicas = {"desired": int(desired), "ready": int(ready) if ready else 0}
+                      except subprocess.CalledProcessError:
+                          mysql_active_replicas = {"error": f"Deployment ''{ACTIVE_DB_DEPLOYMENT}'' not found"}
+
+                      try:
+                          replicas_proc = self._run_command(
+                              [KUBECTL_PATH, "get", "deployment", DEBEZIUM_DEPLOYMENT, "-o", "jsonpath={.spec.replicas},{.status.readyReplicas}"]
+                          )
+                          desired, ready = replicas_proc.stdout.strip().split(",")
+                          debezium_replicas = {"desired": int(desired), "ready": int(ready) if ready else 0}
+                      except subprocess.CalledProcessError:
+                          debezium_replicas = {"error": f"Deployment ''{DEBEZIUM_DEPLOYMENT}'' not found"}
+
                       response_body = {
                           "service_target": current_selector,
                           "watcher_state": internal_state,
-                          "deployment_replicas": replicas_status
+                          "mysql_active_replicas": mysql_active_replicas,
+                          "debezium_replicas": debezium_replicas
                       }
                       self._send_json_response(200, response_body)
 
+                  # /scale-down 기능 - Active DB와 Debezium을 함께 종료
+                  def handle_scale_down(self):
+                      self._run_command(
+                          [KUBECTL_PATH, "scale", "deployment", ACTIVE_DB_DEPLOYMENT, "--replicas=0"]
+                      )
+                      self._run_command(
+                          [KUBECTL_PATH, "scale", "deployment", DEBEZIUM_DEPLOYMENT, "--replicas=0"]
+                      )
+                      message = f"''{ACTIVE_DB_DEPLOYMENT}''와 ''{DEBEZIUM_DEPLOYMENT}''를 종료했습니다."
+                      self._send_json_response(200, {"message": message})
+
+                  # /scale-up 기능 - Active DB만 먼저 시작
+                  def handle_scale_up_db(self):
+                      self._run_command(
+                          [KUBECTL_PATH, "scale", "deployment", ACTIVE_DB_DEPLOYMENT, f"--replicas=1"]
+                      )
+                      message = f"''{ACTIVE_DB_DEPLOYMENT}''를 시작했습니다. DB가 완전히 실행된 후 /recover를 호출하세요."
+                      self._send_json_response(200, {"message": message})
+
+                  # /recover 기능 - 서비스 전환 요청 및 Debezium 시작
                   def handle_recover(self):
                       with open("/state/recover_command", "w") as f:
                           f.write("recover")
-                      self._send_json_response(200, {"message": "Recovery command issued."})
-
-                  def handle_scale(self, replicas):
+                      # conntrack-watcher에 flush를 요청하기 위한 신호 파일 생성
+                      with open("/state/conntrack_flush_request", "w") as f:
+                          f.write("flush")
+                      
                       self._run_command(
-                          [KUBECTL_PATH, "scale", "deployment", TARGET_DEPLOYMENT, f"--replicas={replicas}"]
+                          [KUBECTL_PATH, "scale", "deployment", DEBEZIUM_DEPLOYMENT, "--replicas=1"]
                       )
-                      message = f"Deployment {TARGET_DEPLOYMENT} scale command issued to {replicas} replicas."
+                      
+                      message = "Active DB로 서비스 전환을 요청하고 Debezium을 시작했습니다."
                       self._send_json_response(200, {"message": message})
-
 
               with socketserver.TCPServer(("", PORT), ApiHandler) as httpd:
                   print("Python API server started at port", PORT)
                   httpd.serve_forever()
               '
 
-        # conntrack-watcher 컨테이너 (기존과 동일)
+        # conntrack-watcher 컨테이너
         - name: conntrack-watcher
           image: docker.io/nicolaka/netshoot:latest
           securityContext:
@@ -255,9 +284,12 @@ spec:
               while true; do
                 if [ -f /state/state ]; then
                   CUR_STATE=$(cat /state/state)
-                  if [ "$CUR_STATE" != "$PREV_FILE_STATE" ]; then
-                    conntrack -D -p tcp --dport 32306
-                    echo "$(date '+%Y-%m-%d %H:%M:%S') Flushed conntrack for 32306 (state=${CUR_STATE})"
+                  # 상태 변경 또는 복구 요청 파일이 있을 경우 conntrack flush 실행
+                  if [ "$CUR_STATE" != "$PREV_FILE_STATE" ] || [ -f /state/conntrack_flush_request ]; then
+                    conntrack -D -p tcp --dport 32316
+                    conntrack -D -p tcp --dport 32317
+                    echo "$(date '+%Y-%m-%d %H:%M:%S') Flushed conntrack for 32316, 32317 (state=${CUR_STATE})"
+                    rm -f /state/conntrack_flush_request # 처리 후 신호 파일 삭제
                   fi
                   PREV_FILE_STATE="$CUR_STATE"
                 fi
