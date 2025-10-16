@@ -68,16 +68,3 @@ spec:
               secretKeyRef:
                 name: ravo-manager-secret
                 key: DB_PASSWORD
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: ravo-manager-service
-spec:
-  type: LoadBalancer
-  selector:
-    app: ravo-manager
-  ports:
-    - protocol: TCP
-      port: 8080
-      targetPort: 8080
