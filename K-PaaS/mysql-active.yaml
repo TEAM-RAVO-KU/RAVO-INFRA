@@ -1,0 +1,117 @@
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: mysql-active-pv
+# PV Storage 크기 증설
+spec:
+  capacity:
+    storage: 30Gi
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: manual
+  hostPath:
+    path: "/mnt/data/mysql-active"
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-active-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce           # 단일 노드에서만 Read/Write 가능한 모드
+  storageClassName: manual    # 동적 프로비저닝 없이, 직접 PV를 만들겠다는 의미
+  resources:
+    requests:
+      storage: 30Gi
+  volumeName: mysql-active-pv
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mysql-exporter-config-active
+data:
+  .my.cnf: |
+    [client]
+    user=root
+    password=root
+    host=127.0.0.1
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql-active
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql-active
+  template:
+    metadata:
+      labels:
+        app: mysql-active
+    spec:
+      securityContext:
+        fsGroup: 999
+      containers:
+        - name: mysql-active
+          image: mysql:latest
+          # Failover를 위한 readinessProbe 설정
+          readinessProbe:
+            exec:
+              command:
+                - mysqladmin
+                - ping
+                - "-h127.0.0.1"
+          ports:
+            - containerPort: 3306
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              value: <PW> ### 배포 전 PW 설정
+            # 루트 계정을 원격 접속 허용하려면 MYSQL_ROOT_HOST=%를 추가
+            - name: MYSQL_ROOT_HOST
+              value: "%"
+            # Failover를 위해 DB 이름 통일
+            - name: MYSQL_DATABASE
+              value: ravo_db
+            - name: MYSQL_USER
+              value: active_user
+            - name: MYSQL_PASSWORD
+              value: active_pass
+          resources:
+            limits:
+              memory: "812Mi"
+              cpu: "500m"
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+          volumeMounts:
+            - name: mysql-active-data
+              mountPath: /var/lib/mysql
+            # /etc/mysql/conf.d 디렉터리로 volume 마운트
+            - name: mysql-cdc
+              mountPath: /etc/mysql/conf.d
+        # mysqld_exporter sidecar
+        - name: mysqld-exporter-active
+          image: prom/mysqld-exporter:latest
+          args:
+            - "--config.my-cnf=/config/.my.cnf"
+          ports:
+            - containerPort: 9104
+          resources:
+            limits:
+              memory: "128Mi"
+          volumeMounts:
+            - name: mysql-exporter-config-active
+              mountPath: /config/.my.cnf
+              subPath: .my.cnf
+      volumes:
+        - name: mysql-active-data
+          persistentVolumeClaim:
+            claimName: mysql-active-pvc
+        - name: mysql-exporter-config-active
+          configMap:
+            name: mysql-exporter-config-active
+        # cdc 사용을 위한 ConfigMap volume 마운트
+        - name: mysql-cdc
+          configMap:
+            name: mysql-cdc-config

@@ -1,0 +1,21 @@
+# Naver Cloud의 경우 새롭게 Service를 생성하면 기존의 엔드포인트가 수정되므로
+# 별도로 Service 메니페스트 분리
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql-active-service
+spec:
+  type: LoadBalancer
+  selector:
+    app: mysql-active
+  ports:
+    # MySQL
+    - name: mysql
+      protocol: TCP
+      port: 3306
+      targetPort: 3306
+    # mysqld_exporter
+    - name: metrics
+      protocol: TCP
+      port: 9104
+      targetPort: 9104

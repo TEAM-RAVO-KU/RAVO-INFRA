@@ -3,18 +3,16 @@ kind: Service
 metadata:
   name: direct-mysql-active-service
 spec:
-  type: NodePort
+  type: LoadBalancer
   selector:
     app: mysql-active
   ports:
     - name: mysql-direct
       protocol: TCP
-      port: 3306
+      port: 3416
       targetPort: 3306
-      nodePort: 32426
     # Direct mysqld_exporter
     - name: metrics-direct
       protocol: TCP
-      port: 9104
+      port: 9214
       targetPort: 9104
-      nodePort: 32224
