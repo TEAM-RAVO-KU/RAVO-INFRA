@@ -12,7 +12,7 @@ spec:
     # MySQL
     - name: mysql
       protocol: TCP
-      port: 3306
+      port: 13306
       targetPort: 3306
     # mysqld_exporter
     - name: metrics
