@@ -1,0 +1,14 @@
+#  외부에서 Ravo-Agent API 서버에 접근하기 위한 LoadBalancer
+apiVersion: v1
+kind: Service
+metadata:
+  name: ravo-agent-service
+spec:
+  type: LoadBalancer
+  selector:
+    app: ravo-agent
+  ports:
+  - name: http
+    protocol: TCP
+    port: 8888       # 외부에서 접근할 포트
+    targetPort: 8080  # Ravo-Agent의 api-server 컨테이너가 사용하는 포트

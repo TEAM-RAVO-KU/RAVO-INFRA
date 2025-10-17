@@ -67,7 +67,7 @@ spec:
           emptyDir: {}
         - name: bin-volume
           emptyDir: {}
-      
+
       initContainers:
         - name: kubectl-downloader
           image: alpine:latest
@@ -111,11 +111,11 @@ spec:
                   echo "$(date '+%Y-%m-%d %H:%M:%S') [Recovery] EVENT: Received recovery command."
                   if [ "$EP_ACTIVE" -gt 0 ]; then
                     if [ "$CURRENT_SELECTOR" = "mysql-standby" ]; then
-                        echo "$(date '+%Y-%m-%d %H:%M:%S') [Recovery] EVENT: Active pod is ready. Recovering to active..."
-                        /shared-bin/kubectl patch svc mysql-active-service --type=json -p "[{\"op\":\"replace\",\"path\":\"/spec/selector/app\",\"value\":\"mysql-active\"}]"
-                        echo "active" > /state/state
+                      echo "$(date '+%Y-%m-%d %H:%M:%S') [Recovery] EVENT: Active pod is ready. Recovering to active..."
+                      /shared-bin/kubectl patch svc mysql-active-service --type=json -p "[{\"op\":\"replace\",\"path\":\"/spec/selector/app\",\"value\":\"mysql-active\"}]"
+                      echo "active" > /state/state
                     else
-                        echo "$(date '+%Y-%m-%d %H:%M:%S') [Recovery] INFO: Already in active state. No action needed."
+                      echo "$(date '+%Y-%m-%d %H:%M:%S') [Recovery] INFO: Already in active state. No action needed."
                     fi
                   else
                     echo "$(date '+%Y-%m-%d %H:%M:%S') [Recovery] WARN: Recovery failed. Active pod is not ready yet."
@@ -133,7 +133,7 @@ spec:
                 fi
                 sleep 15
               done
-        
+
         # api-server 컨테이너에 Active DB 스케일링 기능 추가
         - name: api-server
           image: alpine:latest
@@ -146,19 +146,23 @@ spec:
             - /bin/sh
             - -c
             - |
-              apk update && apk add python3
-              
+              # Changed: Add py3-requests for API calls
+              apk update && apk add python3 py3-requests
+
               python3 -c '
               import http.server
               import socketserver
               import json
               import subprocess
               import os
+              import requests # Changed: Import requests
 
               PORT = 8080
               KUBECTL_PATH = "/shared-bin/kubectl"
               ACTIVE_DB_DEPLOYMENT = "mysql-active"
               DEBEZIUM_DEPLOYMENT = "debezium-server"
+              # Changed: Add Ravo-Agent URL (실제 K-PaaS상 RAVO-AGENT의 SVC 주소와 PORT 설정 필요)
+              RAVO_AGENT_URL = "http://<RAVO_AGENT_IP>:<RAVO_AGENT_PORT>"
 
               class ApiHandler(http.server.SimpleHTTPRequestHandler):
                   def _run_command(self, command):
@@ -171,6 +175,16 @@ spec:
                       self.send_header("Content-type", "application/json")
                       self.end_headers()
                       self.wfile.write(json.dumps(data, ensure_ascii=False).encode("utf-8"))
+
+                  # Changed: Add helper function to call Ravo-Agent
+                  def _call_ravo_agent(self, endpoint):
+                      try:
+                          url = f"{RAVO_AGENT_URL}{endpoint}"
+                          response = requests.get(url, timeout=10)
+                          response.raise_for_status()
+                          return True, response.json()
+                      except requests.exceptions.RequestException as e:
+                          return False, {"error": str(e)}
 
                   def do_GET(self):
                       try:
@@ -189,19 +203,17 @@ spec:
                           self._send_json_response(500, error_details)
                       except Exception as e:
                           self._send_json_response(500, {"error": str(e)})
-                          
+
                   def handle_status(self):
                       selector_proc = self._run_command(
                           [KUBECTL_PATH, "get", "svc", "mysql-active-service", "-o", "jsonpath={.spec.selector.app}"]
                       )
                       current_selector = selector_proc.stdout.strip()
-                      
                       try:
                           with open("/state/state", "r") as f:
                               internal_state = f.read().strip()
                       except FileNotFoundError:
                           internal_state = "unknown"
-
                       try:
                           replicas_proc = self._run_command(
                               [KUBECTL_PATH, "get", "deployment", ACTIVE_DB_DEPLOYMENT, "-o", "jsonpath={.spec.replicas},{.status.readyReplicas}"]
@@ -210,7 +222,6 @@ spec:
                           mysql_active_replicas = {"desired": int(desired), "ready": int(ready) if ready else 0}
                       except subprocess.CalledProcessError:
                           mysql_active_replicas = {"error": f"Deployment ''{ACTIVE_DB_DEPLOYMENT}'' not found"}
-
                       try:
                           replicas_proc = self._run_command(
                               [KUBECTL_PATH, "get", "deployment", DEBEZIUM_DEPLOYMENT, "-o", "jsonpath={.spec.replicas},{.status.readyReplicas}"]
@@ -219,7 +230,6 @@ spec:
                           debezium_replicas = {"desired": int(desired), "ready": int(ready) if ready else 0}
                       except subprocess.CalledProcessError:
                           debezium_replicas = {"error": f"Deployment ''{DEBEZIUM_DEPLOYMENT}'' not found"}
-
                       response_body = {
                           "service_target": current_selector,
                           "watcher_state": internal_state,
@@ -236,16 +246,29 @@ spec:
                       self._run_command(
                           [KUBECTL_PATH, "scale", "deployment", DEBEZIUM_DEPLOYMENT, "--replicas=0"]
                       )
-                      message = f"''{ACTIVE_DB_DEPLOYMENT}''와 ''{DEBEZIUM_DEPLOYMENT}''를 종료했습니다."
-                      self._send_json_response(200, {"message": message})
+                      # Changed: Call Ravo-Agent /scale-down
+                      success, ra_response = self._call_ravo_agent("/scale-down")
+                      if success:
+                          message = f"Successfully scaled down ''{ACTIVE_DB_DEPLOYMENT}'' and ''{DEBEZIUM_DEPLOYMENT}'' on-prem and initiated scale down on K-PaaS."
+                          self._send_json_response(200, {"message": message, "ravo_agent_response": ra_response})
+                      else:
+                          message = f"Scaled down local deployments, but failed to call Ravo-Agent."
+                          self._send_json_response(502, {"message": message, "ravo_agent_error": ra_response})
 
                   # /scale-up 기능 - Active DB만 먼저 시작
                   def handle_scale_up_db(self):
                       self._run_command(
                           [KUBECTL_PATH, "scale", "deployment", ACTIVE_DB_DEPLOYMENT, f"--replicas=1"]
                       )
-                      message = f"''{ACTIVE_DB_DEPLOYMENT}''를 시작했습니다. DB가 완전히 실행된 후 /recover를 호출하세요."
-                      self._send_json_response(200, {"message": message})
+                      # Changed: Call Ravo-Agent /scale-up
+                      success, ra_response = self._call_ravo_agent("/scale-up")
+                      if success:
+                          message = f"Successfully scaled up ''{ACTIVE_DB_DEPLOYMENT}'' on-prem and initiated scale up on K-PaaS. Call /recover after the DB is fully running."
+                          self._send_json_response(200, {"message": message, "ravo_agent_response": ra_response})
+                      else:
+                          message = f"Scaled up local DB, but failed to call Ravo-Agent."
+                          self._send_json_response(502, {"message": message, "ravo_agent_error": ra_response})
+
 
                   # /recover 기능 - 서비스 전환 요청 및 Debezium 시작
                   def handle_recover(self):
@@ -254,13 +277,17 @@ spec:
                       # conntrack-watcher에 flush를 요청하기 위한 신호 파일 생성
                       with open("/state/conntrack_flush_request", "w") as f:
                           f.write("flush")
-                      
                       self._run_command(
                           [KUBECTL_PATH, "scale", "deployment", DEBEZIUM_DEPLOYMENT, "--replicas=1"]
                       )
-                      
-                      message = "Active DB로 서비스 전환을 요청하고 Debezium을 시작했습니다."
-                      self._send_json_response(200, {"message": message})
+                      # Changed: Call Ravo-Agent /recover
+                      success, ra_response = self._call_ravo_agent("/recover")
+                      if success:
+                          message = "Requested service recovery to Active DB and started Debezium on-prem. Initiated recovery on K-PaaS."
+                          self._send_json_response(200, {"message": message, "ravo_agent_response": ra_response})
+                      else:
+                          message = "Performed local recovery actions, but failed to call Ravo-Agent."
+                          self._send_json_response(502, {"message": message, "ravo_agent_error": ra_response})
 
               with socketserver.TCPServer(("", PORT), ApiHandler) as httpd:
                   print("Python API server started at port", PORT)

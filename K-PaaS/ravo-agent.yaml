@@ -1,0 +1,249 @@
+# Ravo-Agent Pod에 부여할 클러스터 내 신원
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ravo-agent
+
+---
+# Ravo-Agent가 수행할 수 있는 작업을 정의
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: ravo-agent-role
+  namespace: default
+rules:
+- apiGroups: [""]
+  # Service를 patch하고 Endpoints를 delete할 권한 추가
+  resources: ["pods", "services", "endpoints"]
+  verbs: ["get", "list", "watch", "create", "update", "delete", "patch"]
+- apiGroups: ["apps"]
+  resources: ["deployments"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["apps"]
+  resources: ["deployments/scale"]
+  verbs: ["get", "patch", "update"]
+
+---
+# ServiceAccount와 Role을 연결
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: ravo-agent-rolebinding
+subjects:
+- kind: ServiceAccount
+  name: ravo-agent
+  # apiGroup: ""
+roleRef:
+  kind: Role
+  name: ravo-agent-role
+  apiGroup: rbac.authorization.k8s.io
+
+---
+# Endpoints 템플릿용 ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ravo-agent-endpoint-template
+  namespace: default
+data:
+  endpoints.yaml: |
+    apiVersion: v1
+    kind: Endpoints
+    metadata:
+      name: mysql-active-service
+    subsets:
+      - addresses:
+          - ip: "<On-Prem Standby Pub IP>"
+        ports:
+          - name: mysql
+            port: 3317
+            protocol: TCP
+          - name: metrics
+            port: 3115
+            protocol: TCP
+
+---
+# Ravo-Agent의 메인 워크로드
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ravo-agent
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ravo-agent
+  template:
+    metadata:
+      labels:
+        app: ravo-agent
+    spec:
+      hostNetwork: true
+      serviceAccountName: ravo-agent
+      volumes:
+      - name: state-volume
+        emptyDir: {}
+      - name: bin-volume
+        emptyDir: {}
+      - name: endpoint-template-volume
+        configMap:
+          name: ravo-agent-endpoint-template
+
+      initContainers:
+      - name: kubectl-downloader
+        image: alpine:latest
+        command: ["/bin/sh", "-c", "apk update && apk add curl && curl -LO \"https://dl.k8s.io/release/v1.29.0/bin/linux/amd64/kubectl\" && chmod +x kubectl && mv kubectl /shared-bin/"]
+        volumeMounts:
+        - name: bin-volume
+          mountPath: /shared-bin
+
+      containers:
+      - name: failover-watcher
+        image: alpine:latest
+        volumeMounts:
+        - name: state-volume
+          mountPath: /state
+        - name: bin-volume
+          mountPath: /shared-bin
+        - name: endpoint-template-volume
+          mountPath: /templates
+        command:
+        - /bin/sh
+        - -c
+        - |
+          PREV_LOG_MSG=""
+          echo "$(date '+%Y-%m-%d %H:%M:%S') [K-PaaS Watcher] Starting watcher with correct logic."
+          echo "active" > /state/state
+          while true; do
+            EP_ACTIVE=$(/shared-bin/kubectl get pods -l app=mysql-active -o jsonpath='{.items[?(@.status.containerStatuses[0].ready==true)]}' | wc -w)
+            # [CHANGED] Service에 selector가 있는지 여부로 Active/Standby 상태를 판단
+            CURRENT_SELECTOR=$(/shared-bin/kubectl get svc mysql-active-service -o jsonpath='{.spec.selector.app}' 2>/dev/null)
+
+            if [ -f /state/recover_command ]; then
+              echo "$(date '+%Y-%m-%d %H:%M:%S') [Recovery] EVENT: Received recovery command."
+              if [ "$EP_ACTIVE" -gt 0 ]; then
+                echo "$(date '+%Y-%m-%d %H:%M:%S') [Recovery] Active pod is ready. Restoring service selector..."
+                # [CHANGED] 1. 수동 Endpoints를 먼저 삭제
+                /shared-bin/kubectl delete ep mysql-active-service --ignore-not-found=true
+                # [CHANGED] 2. Service에 selector를 다시 추가하여 자동 복구
+                /shared-bin/kubectl patch svc mysql-active-service -p '{"spec":{"selector":{"app":"mysql-active"}}}'
+                echo "active" > /state/state
+              else
+                echo "$(date '+%Y-%m-%d %H:%M:%S') [Recovery] WARN: Recovery failed. Active pod is not ready yet."
+              fi
+              rm -f /state/recover_command
+            # [CHANGED] Active Pod가 없고 Service가 아직 active 상태(selector가 존재)일 때만 Failover 실행
+            elif [ "$EP_ACTIVE" -lt 1 ] && [ -n "$CURRENT_SELECTOR" ]; then
+              echo "$(date '+%Y-%m-%d %H:%M:%S') [Failover] EVENT: Active pod is down. Switching to manual endpoint."
+              # [CHANGED] 1. Service에서 selector를 제거하여 수동 제어 모드로 전환
+              /shared-bin/kubectl patch svc mysql-active-service --type=json -p='[{"op": "remove", "path": "/spec/selector"}]'
+              # [CHANGED] 2. selector가 사라진 후, 수동 Endpoints를 적용
+              /shared-bin/kubectl apply -f /templates/endpoints.yaml
+              echo "standby" > /state/state
+            fi
+            
+            if [ -n "$CURRENT_SELECTOR" ]; then CURRENT_STATE="active"; else CURRENT_STATE="standby"; fi
+            CURRENT_LOG_MSG="[Watcher] State: ${CURRENT_STATE}, ActiveReady: ${EP_ACTIVE}"
+            if [ "$CURRENT_LOG_MSG" != "$PREV_LOG_MSG" ]; then
+              echo "$(date '+%Y-%m-%d %H:%M:%S') ${CURRENT_LOG_MSG}"
+              PREV_LOG_MSG="$CURRENT_LOG_MSG"
+            fi
+            sleep 15
+          done
+      - name: api-server
+        image: alpine:latest
+        volumeMounts:
+        - name: state-volume
+          mountPath: /state
+        - name: bin-volume
+          mountPath: /shared-bin
+        command:
+        - /bin/sh
+        - -c
+        - |
+          apk update && apk add python3
+          python3 -c '
+          import http.server
+          import socketserver
+          import json
+          import subprocess
+          import os
+          PORT = 8080
+          KUBECTL_PATH = "/shared-bin/kubectl"
+          ACTIVE_DB_DEPLOYMENT = "mysql-active"
+          class ApiHandler(http.server.SimpleHTTPRequestHandler):
+              def _run_command(self, command):
+                  return subprocess.run(command, capture_output=True, text=True, check=True)
+              def _send_json_response(self, status_code, data):
+                  self.send_response(status_code)
+                  self.send_header("Content-type", "application/json")
+                  self.end_headers()
+                  self.wfile.write(json.dumps(data, ensure_ascii=False).encode("utf-8"))
+              def do_GET(self):
+                  try:
+                      if self.path == "/status": self.handle_status()
+                      elif self.path == "/scale-down": self.handle_scale_down()
+                      elif self.path == "/scale-up": self.handle_scale_up_db()
+                      elif self.path == "/recover": self.handle_recover()
+                      else: self._send_json_response(404, {"error": "Not Found", "path_detected": self.path})
+                  except subprocess.CalledProcessError as e:
+                      error_details = {"error": "Command failed", "command": e.cmd, "stdout": e.stdout, "stderr": e.stderr}
+                      self._send_json_response(500, error_details)
+                  except Exception as e:
+                      self._send_json_response(500, {"error": str(e)})
+              def handle_status(self):
+                  selector_proc = self._run_command([KUBECTL_PATH, "get", "svc", "mysql-active-service", "-o", "jsonpath={.spec.selector.app}"])
+                  current_selector = selector_proc.stdout.strip()
+                  try:
+                      with open("/state/state", "r") as f: internal_state = f.read().strip()
+                  except FileNotFoundError: internal_state = "unknown"
+                  try:
+                      replicas_proc = self._run_command([KUBECTL_PATH, "get", "deployment", ACTIVE_DB_DEPLOYMENT, "-o", "jsonpath={.spec.replicas},{.status.readyReplicas}"])
+                      desired, ready = replicas_proc.stdout.strip().split(",")
+                      mysql_active_replicas = {"desired": int(desired), "ready": int(ready) if ready else 0}
+                  except subprocess.CalledProcessError: mysql_active_replicas = {"error": f"Deployment ''{ACTIVE_DB_DEPLOYMENT}'' not found"}
+                  response_body = {"service_target": current_selector, "watcher_state": internal_state, "mysql_active_replicas": mysql_active_replicas}
+                  self._send_json_response(200, response_body)
+              def handle_scale_down(self):
+                  self._run_command([KUBECTL_PATH, "scale", "deployment", ACTIVE_DB_DEPLOYMENT, "--replicas=0"])
+                  message = f"Deployment ''{ACTIVE_DB_DEPLOYMENT}'' scaled down to 0 replicas."
+                  self._send_json_response(200, {"message": message})
+              def handle_scale_up_db(self):
+                  self._run_command([KUBECTL_PATH, "scale", "deployment", ACTIVE_DB_DEPLOYMENT, f"--replicas=1"])
+                  message = f"Deployment ''{ACTIVE_DB_DEPLOYMENT}'' scaled up to 1 replica."
+                  self._send_json_response(200, {"message": message})
+              def handle_recover(self):
+                  with open("/state/recover_command", "w") as f: f.write("recover")
+                  with open("/state/conntrack_flush_request", "w") as f: f.write("flush")
+                  message = "Recovery command received. The failover-watcher will now attempt to switch the service back to the active pod."
+                  self._send_json_response(200, {"message": message})
+          with socketserver.TCPServer(("", PORT), ApiHandler) as httpd:
+              print("Python API server started at port", PORT)
+              httpd.serve_forever()
+          '
+      - name: conntrack-watcher
+        image: docker.io/nicolaka/netshoot:latest
+        securityContext:
+          capabilities:
+            add: ["NET_ADMIN"]
+        volumeMounts:
+        - name: state-volume
+          mountPath: /state
+        command:
+        - /bin/sh
+        - -c
+        - |
+          PREV_FILE_STATE=""
+          while true; do
+            if [ -f /state/state ]; then
+              CUR_STATE=$(cat /state/state)
+              if [ "$CUR_STATE" != "$PREV_FILE_STATE" ] || [ -f /state/conntrack_flush_request ]; then
+                conntrack -D -p tcp --dport 13306
+                echo "$(date '+%Y-%m-%d %H:%M:%S') Flushed conntrack for 13306 (state=${CUR_STATE})"
+                rm -f /state/conntrack_flush_request
+              fi
+              PREV_FILE_STATE="$CUR_STATE"
+            fi
+            sleep 5
+          done

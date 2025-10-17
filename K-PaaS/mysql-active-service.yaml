@@ -5,6 +5,7 @@ kind: Service
 metadata:
   name: mysql-active-service
 spec:
+  externalTrafficPolicy: Local
   type: LoadBalancer
   selector:
     app: mysql-active
