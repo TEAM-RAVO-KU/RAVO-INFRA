@@ -106,44 +106,39 @@ spec:
           mountPath: /state
         - name: bin-volume
           mountPath: /shared-bin
-        - name: endpoint-template-volume
-          mountPath: /templates
         command:
         - /bin/sh
         - -c
         - |
           PREV_LOG_MSG=""
-          echo "$(date '+%Y-%m-%d %H:%M:%S') [K-PaaS Watcher] Starting watcher with correct logic."
+          echo "$(date '+%Y-%m-%d %H:%M:%S') [Watcher] Starting watcher with PROXY logic."
           echo "active" > /state/state
           while true; do
             EP_ACTIVE=$(/shared-bin/kubectl get pods -l app=mysql-active -o jsonpath='{.items[?(@.status.containerStatuses[0].ready==true)]}' | wc -w)
-            # [CHANGED] Service에 selector가 있는지 여부로 Active/Standby 상태를 판단
             CURRENT_SELECTOR=$(/shared-bin/kubectl get svc mysql-active-service -o jsonpath='{.spec.selector.app}' 2>/dev/null)
-
+            
             if [ -f /state/recover_command ]; then
-              echo "$(date '+%Y-%m-%d %H:%M:%S') [Recovery] EVENT: Received recovery command."
+              echo "$(date '+%Y-%m-%d %H:%M:%S') [Recovery] Received recovery command."
               if [ "$EP_ACTIVE" -gt 0 ]; then
-                echo "$(date '+%Y-%m-%d %H:%M:%S') [Recovery] Active pod is ready. Restoring service selector..."
-                # [CHANGED] 1. 수동 Endpoints를 먼저 삭제
-                /shared-bin/kubectl delete ep mysql-active-service --ignore-not-found=true
-                # [CHANGED] 2. Service에 selector를 다시 추가하여 자동 복구
-                /shared-bin/kubectl patch svc mysql-active-service -p '{"spec":{"selector":{"app":"mysql-active"}}}'
+                # [CHANGED] 현재 Selector가 새 프록시('mysql-standby-proxy')를 가리키고 있다면 Active로 복구
+                if [ "$CURRENT_SELECTOR" = "mysql-standby-proxy" ]; then
+                  echo "$(date '+%Y-%m-%d %H:%M:%S') [Recovery] Active pod is ready. Restoring selector to 'mysql-active'."
+                  /shared-bin/kubectl patch svc mysql-active-service -p '{"spec":{"selector":{"app":"mysql-active"}}}'
+                fi
                 echo "active" > /state/state
               else
-                echo "$(date '+%Y-%m-%d %H:%M:%S') [Recovery] WARN: Recovery failed. Active pod is not ready yet."
+                echo "$(date '+%Y-%m-%d %H:%M:%S') [Recovery] WARN: Recovery failed. Active pod not ready."
               fi
               rm -f /state/recover_command
-            # [CHANGED] Active Pod가 없고 Service가 아직 active 상태(selector가 존재)일 때만 Failover 실행
-            elif [ "$EP_ACTIVE" -lt 1 ] && [ -n "$CURRENT_SELECTOR" ]; then
-              echo "$(date '+%Y-%m-%d %H:%M:%S') [Failover] EVENT: Active pod is down. Switching to manual endpoint."
-              # [CHANGED] 1. Service에서 selector를 제거하여 수동 제어 모드로 전환
-              /shared-bin/kubectl patch svc mysql-active-service --type=json -p='[{"op": "remove", "path": "/spec/selector"}]'
-              # [CHANGED] 2. selector가 사라진 후, 수동 Endpoints를 적용
-              /shared-bin/kubectl apply -f /templates/endpoints.yaml
+            # [CHANGED] Active Pod가 없고 Selector가 아직 Active를 가리키고 있을 때 프록시로 전환
+            elif [ "$EP_ACTIVE" -lt 1 ] && [ "$CURRENT_SELECTOR" = "mysql-active" ]; then
+              echo "$(date '+%Y-%m-%d %H:%M:%S') [Failover] Active pod is down. Switching selector to 'mysql-standby-proxy'."
+              # [CHANGED] Service의 Selector를 새 프록시 Pod의 라벨('app=mysql-standby-proxy')로 변경
+              /shared-bin/kubectl patch svc mysql-active-service -p '{"spec":{"selector":{"app":"mysql-standby-proxy"}}}'
               echo "standby" > /state/state
             fi
-            
-            if [ -n "$CURRENT_SELECTOR" ]; then CURRENT_STATE="active"; else CURRENT_STATE="standby"; fi
+
+            if [ "$CURRENT_SELECTOR" = "mysql-active" ]; then CURRENT_STATE="active"; else CURRENT_STATE="standby"; fi
             CURRENT_LOG_MSG="[Watcher] State: ${CURRENT_STATE}, ActiveReady: ${EP_ACTIVE}"
             if [ "$CURRENT_LOG_MSG" != "$PREV_LOG_MSG" ]; then
               echo "$(date '+%Y-%m-%d %H:%M:%S') ${CURRENT_LOG_MSG}"

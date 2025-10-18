@@ -1,0 +1,78 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nginx-standby-proxy-conf
+  namespace: default
+data:
+  nginx.conf: |
+    user nginx;
+    worker_processes auto;
+    events {
+        worker_connections 1024;
+    }
+    stream {
+        upstream mysql_standby {
+            server <On-Prem IP>:3317;
+        }
+        upstream metrics_standby {
+            server <On-Prem IP>:3115;
+        }
+        server {
+            listen 3306;
+            proxy_pass mysql_standby;
+        }
+        server {
+            listen 9104;
+            proxy_pass metrics_standby;
+        }
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql-standby-proxy
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql-standby-proxy
+  template:
+    metadata:
+      labels:
+        app: mysql-standby-proxy # Service가 이 Pod를 찾기 위한 이름표
+    spec:
+      containers:
+      - name: nginx-proxy
+        image: nginx:latest
+        ports:
+        - containerPort: 3306 # MySQL 수신 포트
+        - containerPort: 9104 # Metrics 수신 포트
+        volumeMounts:
+        - name: nginx-conf-volume
+          mountPath: /etc/nginx/nginx.conf
+          subPath: nginx.conf
+      volumes:
+      - name: nginx-conf-volume
+        configMap:
+          name: nginx-standby-proxy-conf
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql-standby-proxy-svc
+  namespace: default
+spec:
+  # externalTrafficPolicy는 기본값인 Cluster를 사용
+  type: LoadBalancer
+  selector:
+    app: mysql-standby-proxy
+  ports:
+  - name: mysql
+    protocol: TCP
+    port: 23306      # DBeaver가 접속할 포트
+    targetPort: 3306  # Nginx Pod가 3306 포트로 수신
+  - name: metrics
+    protocol: TCP
+    port: 9104        # Exporter가 접속할 포트
+    targetPort: 9104  # Nginx Pod가 9104 포트로 수신
