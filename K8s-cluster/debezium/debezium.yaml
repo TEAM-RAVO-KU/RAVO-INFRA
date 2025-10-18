@@ -22,10 +22,12 @@ data:
     debezium.sink.kafka.producer.key.serializer=org.apache.kafka.common.serialization.StringSerializer
     debezium.sink.kafka.producer.value.serializer=org.apache.kafka.common.serialization.StringSerializer
 
-    ### Source → MySQL(active)
+    ### Source → MySQL(K-PaaS Active)
     debezium.source.connector.class=io.debezium.connector.mysql.MySqlConnector
-    debezium.source.database.hostname=mysql-active-service
-    debezium.source.database.port=3306
+    # K-PaaS 로드밸런서 주소로 변경
+    debezium.source.database.hostname=default-mysql-active-ser-9f318-111441312-748c6af23088.kr.lb.naverncp.com
+    # K-PaaS 로드밸런서 포트로 변경
+    debezium.source.database.port=13306
     debezium.source.database.user=${MYSQL_USER}
     debezium.source.database.password=${MYSQL_PASSWORD}
     debezium.source.database.server.id=223344
