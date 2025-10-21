@@ -29,30 +29,6 @@ RAVO는 기존에 이미 활용하고 있는 서비스의 Active DB를 그대로
 * 3개의 컨테이너로 이루어진 RAVO의 핵심 워크로드입니다.
 * Active DB에 대한 Failover와 Service Patch를 통한 Recovery를 수행하여 RAVO의 핵심 기능 동작을 가능하게 합니다.
 
-### On-Premise Kubernetes Cluster 상 구성 요소 및 역할
-
-**[Debezium Server]**
-* Active DB에 대해 CDC를 수행하여 Live Sync를 위한 Kafka Topic의 Message를 Produce합니다.
-* Keep-Alive 기능과 DB 재시도 로직을 추가하여 ActiveDB의 Idle 상태와 장애 상황에 대비하였습니다.
-
-**[Kafka Cluster]**
-* RAVO-SERVER가 Live Sync를 위해 구독하는 메시지 큐입니다.
-
-**[RAVO-SERVER]**
-* Kafka의 CDC Topic을 구독하여 실시간으로 Active DB의 쿼리를 Standby DB에 적용해 Live Sync를 수행합니다.
-* 주기적으로 Active DB에 대한 헬스체킹을 수행합니다.
-* Active DB Down 시 Failover된 Standby DB로의 쿼리를 GTID를 활용해 추적하여 기록하고 Active DB가 다시 UP 되었을 때 Standby DB의 변경 사항을 역으로 Active DB에 적용합니다. 이후 Active Service를 Patch하는 RAVO-AGENT API를 호출합니다.
-
-**[RAVO Persistent Volume]**
-* 일 1회 RAVO-SERVER가 Dump Backup을 수행하는 볼륨입니다.
-* 물리적으로 분리되며 복구 로직까지 지닌 소산 백업 형태입니다.
-
-**[MySQL Standby]**
-* 빈 상태로 새롭게 배포될 MySQL 애플리케D[HA-AGENT]
-* 3개의 컨테이너로 이루어진 RAVO의 핵심 워크로드입니다.
-* Active DB에 대한 Failover와 Service Patch를 통한 Recovery를
-  수행하여 RAVO의 핵심 기능 동작을 가능하게 합니다.
-
 ---
 
 ### On-Premise Kubernetes Cluster 상 구성 요소 및 역할
@@ -67,7 +43,7 @@ RAVO는 기존에 이미 활용하고 있는 서비스의 Active DB를 그대로
 **[RAVO-SERVER]**
 * Kafka의 CDC Topic을 구독하여 실시간으로 Active DB의 쿼리를 Standby DB에 적용해 Live Sync를 수행합니다.
 * 주기적으로 Active DB에 대한 헬스체킹을 수행합니다.
-* Active DB Down 시 Failover된 Standby DB로의 쿼리를 GTID를 활용해 추적하여 기록하고 Active DB가 다시 UP 되었을 때 Standby DB의 변경 사항을 역으로 Active DB에 적용합니다. 이후 Active Service를 Patch하는 [HA-AGENT] API를 호출합니다.
+* Active DB Down 시 Failover된 Standby DB로의 쿼리를 GTID를 활용해 추적하여 기록하고 Active DB가 다시 UP 되었을 때 Standby DB의 변경 사항을 역으로 Active DB에 적용합니다. 이후 Active Service를 Patch하는 [RAVO-AGENT] API를 호출합니다.
 
 **[RAVO Persistent Volume]**
 * 일 1회 RAVO-SERVER가 Dump Backup을 수행하는 볼륨입니다.
