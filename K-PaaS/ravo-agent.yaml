@@ -144,7 +144,7 @@ spec:
               echo "$(date '+%Y-%m-%d %H:%M:%S') ${CURRENT_LOG_MSG}"
               PREV_LOG_MSG="$CURRENT_LOG_MSG"
             fi
-            sleep 15
+            sleep 0.5
           done
       - name: api-server
         image: alpine:latest
@@ -240,5 +240,5 @@ spec:
               fi
               PREV_FILE_STATE="$CUR_STATE"
             fi
-            sleep 5
+            sleep 0.5
           done
