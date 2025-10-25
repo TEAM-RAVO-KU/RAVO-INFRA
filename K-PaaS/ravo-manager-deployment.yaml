@@ -26,23 +26,23 @@ spec:
         - containerPort: 8080
         env:
           # === ConfigMap에서 설정값 주입 ===
-          # DB URLs
-          - name: SPRING_DATASOURCE_LIVE_JDBC-URL
+          # DB URLs (수정: 대시를 언더스코어로 변경)
+          - name: SPRING_DATASOURCE_LIVE_JDBC_URL
             valueFrom:
               configMapKeyRef:
                 name: ravo-manager-configmap
                 key: LIVE_DB_URL
-          - name: SPRING_DATASOURCE_STANDBY_JDBC-URL
+          - name: SPRING_DATASOURCE_STANDBY_JDBC_URL
             valueFrom:
               configMapKeyRef:
                 name: ravo-manager-configmap
                 key: STANDBY_DB_URL
-          - name: SPRING_DATASOURCE_BATCH_JDBC-URL
+          - name: SPRING_DATASOURCE_BATCH_JDBC_URL
             valueFrom:
               configMapKeyRef:
                 name: ravo-manager-configmap
                 key: BATCH_DB_URL
-          - name: SPRING_DATASOURCE_DIRECT_JDBC-URL
+          - name: SPRING_DATASOURCE_DIRECT_JDBC_URL
             valueFrom:
               configMapKeyRef:
                 name: ravo-manager-configmap
@@ -59,19 +59,19 @@ spec:
               configMapKeyRef:
                 name: ravo-manager-configmap
                 key: MONITORING_STANDBY_URL
-          
+
           # Application Endpoints
-          - name: APPLICATION_FAILOVER_STATUS-URL
+          - name: APPLICATION_FAILOVER_STATUS_URL
             valueFrom:
               configMapKeyRef:
                 name: ravo-manager-configmap
                 key: FAILOVER_STATUS_URL
-          - name: CLIENT_ENDPOINTS_SCALE-DOWN
+          - name: CLIENT_ENDPOINTS_SCALE_DOWN
             valueFrom:
               configMapKeyRef:
                 name: ravo-manager-configmap
                 key: CLIENT_SCALE_DOWN_URL
-          - name: CLIENT_ENDPOINTS_SCALE-UP
+          - name: CLIENT_ENDPOINTS_SCALE_UP
             valueFrom:
               configMapKeyRef:
                 name: ravo-manager-configmap
@@ -96,7 +96,7 @@ spec:
               secretKeyRef:
                 name: ravo-manager-secret
                 key: DB_PASSWORD
-          
+
           # Standby DB Credentials
           - name: SPRING_DATASOURCE_STANDBY_USERNAME
             valueFrom:
@@ -114,12 +114,12 @@ spec:
             valueFrom:
               secretKeyRef:
                 name: ravo-manager-secret
-                key: DB_USERNAME # 'root' 공통 사용
+                key: DB_USERNAME
           - name: SPRING_DATASOURCE_BATCH_PASSWORD
             valueFrom:
               secretKeyRef:
                 name: ravo-manager-secret
-                key: DB_PASSWORD_BATCH # 새로 추가된 배치 비밀번호
+                key: DB_PASSWORD_BATCH
 
           # Direct DB Credentials
           - name: SPRING_DATASOURCE_DIRECT_USERNAME
