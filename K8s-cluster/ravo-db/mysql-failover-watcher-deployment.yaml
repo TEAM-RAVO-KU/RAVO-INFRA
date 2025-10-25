@@ -131,7 +131,7 @@ spec:
                   echo "$(date '+%Y-%m-%d %H:%M:%S') ${CURRENT_LOG_MSG}"
                   PREV_LOG_MSG="$CURRENT_LOG_MSG"
                 fi
-                sleep 0.5
+                sleep 15
               done
 
         # api-server 컨테이너에 Active DB 스케일링 기능 추가
@@ -320,5 +320,5 @@ spec:
                   fi
                   PREV_FILE_STATE="$CUR_STATE"
                 fi
-                sleep 0.5
+                sleep 5
               done

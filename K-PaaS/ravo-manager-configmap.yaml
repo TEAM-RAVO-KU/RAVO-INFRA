@@ -3,7 +3,22 @@ kind: ConfigMap
 metadata:
   name: ravo-manager-configmap
 data:
-  LIVE_DB_URL: "<K-PaaS Active Direct>"
-  STANDBY_DB_URL: "<On-Prem Standby>"
-  MONITORING_ACTIVE_URL: "<K-PaaS Active Direct Metric>"
-  MONITORING_STANDBY_URL: "<On-Prem Standby Metric>"
+  # DB URLs
+  LIVE_DB_URL: "jdbc:mysql://default-mysql-active-ser-9f318-111441312-748c6af23088.kr.lb.naverncp.com:****/ravo_db?allowPublicKeyRetrieval=true"
+  STANDBY_DB_URL: "jdbc:mysql://***.***.***.***:****/ravo_db?allowPublicKeyRetrieval=true"
+  BATCH_DB_URL: "jdbc:mysql://***.***.***.***:****/batch_db?allowPublicKeyRetrieval=true&useSSL=false"
+  DIRECT_DB_URL: "jdbc:mysql://default-direct-mysql-act-b9cad-111356016-9b0b2cd4e77e.kr.lb.naverncp.com:****/ravo_db?allowPublicKeyRetrieval=true"
+  
+  # Monitoring Endpoints
+  MONITORING_ACTIVE_URL: "http://default-direct-mysql-act-b9cad-111356016-9b0b2cd4e77e.kr.lb.naverncp.com:****/metrics"
+  MONITORING_STANDBY_URL: "http://***.***.***.***:****/metrics"
+
+
+  # Application Endpoints
+  FAILOVER_STATUS_URL: "http://***.***.***.***:****/status"
+  CLIENT_SCALE_DOWN_URL: "http://***.***.***.***:****/scale-down"
+  CLIENT_SCALE_UP_URL: "http://***.***.***.***:****/scale-up"
+
+
+  # Management
+  MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: "*"
